@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "99901555407",
+    "firebase_url": "https://pi4-iot-1b7bb-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "pi4-iot-1b7bb",
+    "storage_bucket": "pi4-iot-1b7bb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:99901555407:android:667315652e67bbd3b8edba",
+        "android_client_info": {
+          "package_name": "com.example.app_iot"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "99901555407-b3tnvkfd4icijvc1svhe4de916g7m3kf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDsn7LA6-5X0nirmhDpnia1rLeflUDe50Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "99901555407-b3tnvkfd4icijvc1svhe4de916g7m3kf.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "99901555407-63me5na75udo4evj3lv7vigrk192pb9v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.appIot"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
