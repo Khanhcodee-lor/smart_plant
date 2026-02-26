@@ -1,6 +1,7 @@
 import 'package:app_iot/src/core/constants/app_assets.dart';
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
+import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 import 'package:app_iot/src/features/main/presentation/views/main_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -130,8 +131,17 @@ class CustomBottomNav extends ConsumerWidget {
             ),
             child: InkWell(
               onTap: () {
-                // TODO: Gọi hàm mở Chatbot AI ở đây
-                print("Mở AI Chatbot");
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (context) => Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom,
+                      //Nó trả về chiều cao phần UI bị che bởi hệ thống
+                    ),
+                    child: AiChatbotSheet(),
+                  ),
+                );
               },
               borderRadius: BorderRadius.circular(35.r),
               splashColor: AppColors.accent.withOpacity(0.1),
