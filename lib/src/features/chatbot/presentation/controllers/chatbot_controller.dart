@@ -49,6 +49,8 @@ class ChatbotController extends StateNotifier<ChatState> {
       // Truyền dữ liệu dạng Map lên Server
       final result = await callable.call(<String, dynamic>{'text': text});
 
+      if (!mounted) return;
+
       // Lấy câu trả lời (trường 'reply' đã định nghĩa ở index.js)
       String aiResponse = result.data['reply'] ?? "AI không có phản hồi";
 
@@ -61,6 +63,7 @@ class ChatbotController extends StateNotifier<ChatState> {
         isLoading: false,
       );
     } on FirebaseFunctionsException catch (error) {
+      if (!mounted) return;
       // Lỗi do Firebase hoặc Server trả về
       state = state.copyWith(
         messages: [
@@ -70,6 +73,7 @@ class ChatbotController extends StateNotifier<ChatState> {
         isLoading: false,
       );
     } catch (e) {
+      if (!mounted) return;
       // Lỗi cục bộ khác
       state = state.copyWith(
         messages: [

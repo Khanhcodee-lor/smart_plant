@@ -181,8 +181,9 @@ class CustomBottomNav extends ConsumerWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutCubic,
-          padding: EdgeInsets.all(4),
-          margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
+          padding: EdgeInsets.symmetric(
+            vertical: 4.h,
+          ), // Sửa lại padding đồng nhất
           decoration: BoxDecoration(
             color: isSelected
                 ? AppColors.borderFocused.withOpacity(0.08)
@@ -191,67 +192,68 @@ class CustomBottomNav extends ConsumerWidget {
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min, // Giữ các thành phần ép sát nhau
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // --- HIỆU ỨNG POP VÀ ĐỔ MÀU ICON ---
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 800),
-                    switchInCurve: Curves.easeOutBack,
-                    switchOutCurve: Curves.easeIn,
-
-                    transitionBuilder:
-                        (Widget child, Animation<double> animation) {
-                          return ScaleTransition(
-                            scale: animation,
-                            child: FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            ),
-                          );
-                        },
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 800),
+              // Cố định chiều cao cho phần Icon để tránh nhảy Layout
+              SizedBox(
+                height: 24.h,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center, // Căn giữa icon trong stack
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(
+                        milliseconds: 400,
+                      ), // Giảm xuống cho mượt
+                      transitionBuilder:
+                          (Widget child, Animation<double> animation) {
+                            return ScaleTransition(
+                              scale: animation,
+                              child: FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              ),
+                            );
+                          },
                       child: Container(
                         key: ValueKey(isSelected),
                         child: isSelected ? activeIcon : inactiveIcon,
                       ),
                     ),
-                  ),
-
-                  // --- CHẤM ĐỎ THÔNG BÁO ---
-                  if (hasNotification && !isSelected)
-                    Positioned(
-                      right: -2,
-                      top: -2,
-                      child: Container(
-                        width: 8.r,
-                        height: 8.r,
-                        decoration: const BoxDecoration(
-                          color: Colors.redAccent,
-                          shape: BoxShape.circle,
+                    if (hasNotification && !isSelected)
+                      Positioned(
+                        right: -4,
+                        top: -4,
+                        child: Container(
+                          width: 8.r,
+                          height: 8.r,
+                          decoration: const BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-
-              // --- CHỈ HIỆN CHỮ KHI ĐƯỢC CHỌN ---
               if (isSelected) ...[
                 SizedBox(height: 2.h),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  // Tuyệt chiêu replaceAll để chống rớt dòng chữ "Trang chủ"
-                  child: label
-                      .replaceAll(' ', '\u00A0')
-                      .bodyCustom(
-                        maxLines: 1,
-                        size: 8.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textMain,
-                      ),
+                // Khống chế chiều cao cho Text để không bao giờ tràn xuống dưới
+                SizedBox(
+                  height: 12.h,
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: label
+                          .replaceAll(' ', '\u00A0')
+                          .bodyCustom(
+                            maxLines: 1,
+                            size: 8.sp,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textMain,
+                          ),
+                    ),
+                  ),
                 ),
               ],
             ],

@@ -1,7 +1,7 @@
+import 'package:app_iot/src/features/home/data/data_sources/location_service.dart';
+import 'package:app_iot/src/features/home/data/data_sources/weather_remote_data_source.dart';
 import 'package:app_iot/src/features/home/domain/entities/weather.dart';
 import 'package:app_iot/src/features/home/domain/repositories/weather_repository.dart';
-import 'package:app_iot/src/features/home/data/data_sources/weather_remote_data_source.dart';
-import 'package:app_iot/src/features/home/data/data_sources/location_service.dart';
 
 class WeatherRepositoryImpl implements WeatherRepository {
   final WeatherRemoteDataSource remoteDataSource;

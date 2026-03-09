@@ -1,7 +1,6 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
-import 'package:app_iot/src/features/support/presentation/widgets/device_selector_section.dart';
 import 'package:app_iot/src/features/support/presentation/widgets/explore_section.dart';
 import 'package:app_iot/src/features/support/presentation/widgets/service_grid.dart';
 import 'package:app_iot/src/features/support/presentation/widgets/support_search_bar.dart';
@@ -12,6 +11,19 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class SupportScreen extends BaseView {
   const SupportScreen({super.key});
+
+  @override
+  bool extendBodyBehindAppBar() => true;
+
+  @override
+  PreferredSizeWidget? buildAppBar(BuildContext context, WidgetRef ref) {
+    return AppBar(
+      title: "Hỗ trợ".h1Custom(size: 20.sp),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      centerTitle: false,
+    );
+  }
 
   @override
   Color? backgroundColor(BuildContext context) => Colors.transparent;
@@ -44,12 +56,7 @@ class SupportScreen extends BaseView {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(height: 20.h),
-            "Hỗ trợ".h1Custom(size: 24.sp),
-            SizedBox(height: 20.h),
             const SupportSearchBar(),
-            SizedBox(height: 24.h),
-            const DeviceSelectorSection(),
             SizedBox(height: 24.h),
             const ServiceGrid(),
             SizedBox(height: 24.h),
