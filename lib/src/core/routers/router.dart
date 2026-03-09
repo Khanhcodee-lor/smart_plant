@@ -1,4 +1,5 @@
 import 'package:app_iot/src/features/auth/presentation/controllers/views/login_screen.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/view/disease_detection_screen.dart';
 import 'package:app_iot/src/features/main/presentation/views/main_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -62,15 +63,7 @@ GoRouter router(Ref ref) {
             name: 'plant_detail',
             builder: (context, state) {
               final id = state.pathParameters['id']!;
-              return Scaffold(
-                appBar: AppBar(title: const Text('Chi tiết cây')),
-                body: Center(
-                  child: Text(
-                    'Chi tiết ID: $id',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
-              );
+              return DiseaseDetectionScreen(plantId: id);
             },
           ),
         ],

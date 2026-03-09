@@ -3,6 +3,7 @@ import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
 
 class MyPlant extends StatelessWidget {
   const MyPlant({super.key});
@@ -22,13 +23,18 @@ class MyPlant extends StatelessWidget {
               color: AppColors.textMain, // Tuỳ chỉnh màu theo theme của bạn
             ),
             // Nút menu tròn
-            Container(
-              padding: EdgeInsets.all(6.r),
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.15),
-                shape: BoxShape.circle,
+            InkWell(
+              onTap: () {
+                context.go('/plant-detail/1');
+              },
+              child: Container(
+                padding: EdgeInsets.all(6.r),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.menu, size: 18.sp, color: AppColors.textMain),
               ),
-              child: Icon(Icons.menu, size: 18.sp, color: AppColors.textMain),
             ),
           ],
         ),
@@ -63,15 +69,12 @@ class MyPlant extends StatelessWidget {
           // Phần trên: Ảnh + Tên + Trạng thái
           Row(
             children: [
-              // Ảnh tủ lạnh (Bạn thay bằng Image.asset nếu có ảnh thật nhé)
               Container(
                 width: 80.w,
                 height: 80.h,
-
                 child: Image.asset(AppAssets.tomatoPlantImage),
               ),
               SizedBox(width: 16.w),
-
               // Thông tin
               Expanded(
                 child: Column(
