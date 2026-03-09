@@ -17,8 +17,9 @@ class ServiceGrid extends StatelessWidget {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: 3,
-          mainAxisSpacing: 20.h,
-          crossAxisSpacing: 10.w,
+          mainAxisSpacing: 12.h,
+          crossAxisSpacing: 16.w,
+          childAspectRatio: 1.2,
           children: [
             _buildServiceItem(
               Icons.grid_view,

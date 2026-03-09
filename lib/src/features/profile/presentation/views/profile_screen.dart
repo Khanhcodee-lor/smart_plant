@@ -1,8 +1,8 @@
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
+import 'package:app_iot/src/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:app_iot/src/features/profile/presentation/widgets/profile_header.dart';
 import 'package:app_iot/src/features/profile/presentation/widgets/profile_menu_list.dart';
-import 'package:app_iot/src/features/profile/presentation/widgets/third_party_services.dart';
 import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,10 +76,35 @@ class ProfileScreen extends BaseView {
             ),
             const ProfileHeader(),
             SizedBox(height: 24.h),
-            const ThirdPartyServices(),
-            SizedBox(height: 24.h),
             const ProfileMenuList(),
             SizedBox(height: 30.h),
+            // Nút đăng xuất
+            SizedBox(
+              width: double.infinity,
+              height: 50.h,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  ref.read(authControllerProvider.notifier).logout();
+                },
+                icon: Icon(Icons.logout_rounded, size: 20.sp),
+                label: Text(
+                  "Đăng xuất",
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error.withOpacity(0.1),
+                  foregroundColor: AppColors.error,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 100.h),
           ],
         ),
       ),

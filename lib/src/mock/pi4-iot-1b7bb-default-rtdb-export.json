@@ -1,0 +1,42 @@
+{
+  "plants": {
+    "tomato_001": {
+      "detections": {
+        "history": {
+          "-Oju8d4RNSVU7Eif7P5L": {
+            "class": "Tomato leaf late blight",
+            "confidence": 0.7143871784210205,
+            "snapshot": "detections/snapshots/20260126_185310_Tomato_leaf_late_blight.jpg",
+            "time": "2026-01-26 18:53:10"
+          },
+          "-Oju8f92KsLQxA31abcD": {
+            "class": "Healthy",
+            "confidence": 0.92,
+            "snapshot": "detections/snapshots/20260125_103012_Healthy.jpg",
+            "time": "2026-01-25 10:30:12"
+          }
+        },
+        "latest": {
+          "class": "Tomato leaf late blight",
+          "confidence": 0.71,
+          "time": "2026-01-26 18:53:10"
+        }
+      },
+      "info": {
+        "image": "tomato",
+        "name": "Cà chua"
+      },
+      "pump": {
+        "status": 1
+      },
+      "sensors": {
+        "humidity": 68,
+        "soilMoisture": 42,
+        "temperature": 27.8
+      },
+      "stream": {
+        "video_url": "https://705e73c177eb.ngrok-free.app/video"
+      }
+    }
+  }
+}
