@@ -41,39 +41,6 @@ class ProfileScreen extends BaseView {
         child: Column(
           children: [
             SizedBox(height: 20.h),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Stack(
-                  children: [
-                    Icon(
-                      Icons.notifications_none,
-                      size: 28.sp,
-                      color: AppColors.textMain,
-                    ),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          "6",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 8.sp,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
             const ProfileHeader(),
             SizedBox(height: 24.h),
             const ProfileMenuList(),

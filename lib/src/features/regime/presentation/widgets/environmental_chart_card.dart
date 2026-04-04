@@ -7,6 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 class EnvironmentalChartCard extends StatelessWidget {
   final String title;
   final List<FlSpot> spots;
+  final List<String> xLabels;
   final Color chartColor;
   final String unit;
 
@@ -14,6 +15,7 @@ class EnvironmentalChartCard extends StatelessWidget {
     super.key,
     required this.title,
     required this.spots,
+    required this.xLabels,
     required this.chartColor,
     required this.unit,
   });
@@ -21,19 +23,8 @@ class EnvironmentalChartCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(16.w),
+      padding: EdgeInsets.symmetric(vertical: 16.h),
       height: 250.h,
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(20.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -42,11 +33,55 @@ class EnvironmentalChartCard extends StatelessWidget {
           Expanded(
             child: LineChart(
               LineChartData(
+                lineTouchData: LineTouchData(
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (touchedSpot) => const Color(0xFF1B233A),
+                    tooltipRoundedRadius: 16.r,
+                    fitInsideHorizontally: true,
+                    fitInsideVertically: true,
+                    getTooltipItems: (touchedSpots) {
+                      return touchedSpots.map((LineBarSpot touchedSpot) {
+                        return LineTooltipItem(
+                          '${touchedSpot.y.toStringAsFixed(1)}$unit',
+                          TextStyle(
+                            color: chartColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14.sp,
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                  getTouchedSpotIndicator:
+                      (LineChartBarData barData, List<int> spotIndexes) {
+                        return spotIndexes.map((index) {
+                          return TouchedSpotIndicatorData(
+                            FlLine(
+                              color: Colors.white,
+                              strokeWidth: 1.5,
+                              dashArray: [4, 4],
+                            ),
+                            FlDotData(
+                              show: true,
+                              getDotPainter: (spot, percent, barData, index) =>
+                                  FlDotCirclePainter(
+                                    radius: 6,
+                                    color: Colors.white,
+                                    strokeWidth: 3,
+                                    strokeColor: chartColor,
+                                  ),
+                            ),
+                          );
+                        }).toList();
+                      },
+                ),
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  getDrawingHorizontalLine: (value) =>
-                      FlLine(color: AppColors.divider, strokeWidth: 1),
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: AppColors.divider.withOpacity(0.5),
+                    strokeWidth: 1,
+                  ),
                 ),
                 titlesData: FlTitlesData(
                   show: true,
@@ -56,52 +91,56 @@ class EnvironmentalChartCard extends StatelessWidget {
                   topTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
                   ),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 30,
                       interval: 1,
                       getTitlesWidget: (value, meta) {
+                        int index = value.toInt();
+                        // Only draw a label if we have a string for this index
+                        if (index < 0 ||
+                            index >= xLabels.length ||
+                            xLabels[index].isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+
+                        String text = xLabels[index];
                         return Padding(
                           padding: EdgeInsets.only(top: 8.h),
-                          child: "${value.toInt()}h".labelCustom(size: 10.sp),
+                          child: text.labelCustom(
+                            size: 11.sp,
+                            color: index == spots.length - 1
+                                ? AppColors.primary
+                                : const Color(0xFF8B93A6),
+                          ),
                         );
                       },
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: 10,
-                      getTitlesWidget: (value, meta) {
-                        return value.toInt().toString().labelCustom(
-                          size: 10.sp,
-                        );
-                      },
-                      reservedSize: 30,
                     ),
                   ),
                 ),
                 borderData: FlBorderData(show: false),
                 minX: 0,
-                maxX: 11,
+                maxX: spots.isNotEmpty ? spots.last.x : 6,
                 minY: 0,
-                maxY: 60,
                 lineBarsData: [
                   LineChartBarData(
                     spots: spots,
                     isCurved: true,
                     gradient: LinearGradient(
-                      colors: [chartColor, chartColor.withOpacity(0.3)],
+                      colors: [chartColor, chartColor.withOpacity(0.8)],
                     ),
-                    barWidth: 3,
+                    barWidth: 4,
                     isStrokeCapRound: true,
                     dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
                       gradient: LinearGradient(
                         colors: [
-                          chartColor.withOpacity(0.2),
+                          chartColor.withOpacity(0.35),
                           chartColor.withOpacity(0.0),
                         ],
                         begin: Alignment.topCenter,

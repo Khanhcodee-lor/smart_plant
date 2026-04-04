@@ -1,6 +1,10 @@
 import 'package:app_iot/src/features/auth/presentation/controllers/views/login_screen.dart';
+import 'package:app_iot/src/features/bluetooth/presentation/views/bluetooth_scan_screen.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/view/disease_detection_screen.dart';
 import 'package:app_iot/src/features/main/presentation/views/main_screen.dart';
+import 'package:app_iot/src/features/regime/presentation/views/humidity_detail_screen.dart';
+import 'package:app_iot/src/features/regime/presentation/views/soil_moisture_detail_screen.dart';
+import 'package:app_iot/src/features/regime/presentation/views/temperature_detail_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -66,7 +70,43 @@ GoRouter router(Ref ref) {
               return DiseaseDetectionScreen(plantId: id);
             },
           ),
+
+          /// TEMPERATURE DETAIL
+          GoRoute(
+            path: 'temperature/:id',
+            name: 'temperature_detail',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return TemperatureDetailScreen(plantId: id);
+            },
+          ),
+
+          /// HUMIDITY DETAIL
+          GoRoute(
+            path: 'humidity/:id',
+            name: 'humidity_detail',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return HumidityDetailScreen(plantId: id);
+            },
+          ),
+
+          /// SOIL MOISTURE DETAIL
+          GoRoute(
+            path: 'soil-moisture/:id',
+            name: 'soil_moisture_detail',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return SoilMoistureDetailScreen(plantId: id);
+            },
+          ),
         ],
+      ),
+
+      GoRoute(
+        path: '/bluetooth-scan',
+        name: 'bluetooth_scan',
+        builder: (context, state) => const BluetoothScanScreen(),
       ),
     ],
   );

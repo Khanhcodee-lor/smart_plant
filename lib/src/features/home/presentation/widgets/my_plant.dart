@@ -62,7 +62,7 @@ class MyPlant extends ConsumerWidget {
         ),
 
         SizedBox(height: 10.h),
-        Center(child: _buildAddPlantButton()),
+        Center(child: _buildAddPlantButton(context)),
       ],
     );
   }
@@ -148,9 +148,9 @@ class MyPlant extends ConsumerWidget {
   }
 
   // --- Widget Nút Thêm Thiết Bị ---
-  Widget _buildAddPlantButton() {
+  Widget _buildAddPlantButton(BuildContext context) {
     return InkWell(
-      onTap: () {},
+      onTap: () => context.push('/bluetooth-scan'),
       borderRadius: BorderRadius.circular(30.r),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
@@ -165,7 +165,7 @@ class MyPlant extends ConsumerWidget {
             ),
           ],
         ),
-        child: "Thêm loại cây".bodyCustom(
+        child: "Cài đặt Wifi thiết bị".bodyCustom(
           size: 12.sp,
           color: AppColors.disabledText,
         ),

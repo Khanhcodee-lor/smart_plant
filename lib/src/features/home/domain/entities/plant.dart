@@ -13,6 +13,16 @@ class DetectionItem with _$DetectionItem {
 }
 
 @freezed
+class SensorHistoryItem with _$SensorHistoryItem {
+  const factory SensorHistoryItem({
+    required double temperature,
+    required double humidity,
+    required double soilMoisture,
+    required String time,
+  }) = _SensorHistoryItem;
+}
+
+@freezed
 class Plant with _$Plant {
   const factory Plant({
     required String id,
@@ -20,8 +30,12 @@ class Plant with _$Plant {
     required String status,
     required String imageUrl,
     required String videoUrl,
+    required double temperature,
+    required double humidity,
+    required double soilMoisture,
     required DetectionItem? latestDetection,
     required List<DetectionItem> history,
+    required List<SensorHistoryItem> sensorHistory,
   }) = _Plant;
 
   // Custom mapper từ Realtime Database JSON Object
@@ -38,7 +52,7 @@ class Plant with _$Plant {
     // Detections
     final detections = data['detections'] as Map<dynamic, dynamic>? ?? {};
     final latestData = detections['latest'] as Map<dynamic, dynamic>?;
-    
+
     DetectionItem? latestDetection;
     if (latestData != null) {
       latestDetection = DetectionItem(
@@ -58,16 +72,46 @@ class Plant with _$Plant {
     final List<DetectionItem> historyList = [];
     historyData.forEach((key, value) {
       if (value is Map) {
-         historyList.add(DetectionItem(
+        historyList.add(
+          DetectionItem(
             diseaseClass: value['class']?.toString() ?? 'Unknown',
             confidence: (value['confidence'] as num?)?.toDouble() ?? 0.0,
             time: value['time']?.toString() ?? '',
             snapshotUrl: value['snapshot']?.toString() ?? '',
-         ));
+          ),
+        );
       }
     });
 
-    // Sort lịch sử theo thời gian mới nhất (cơ bản dựa trên chuỗi time)
+    // Sensors
+    final sensors = data['sensors'] as Map<dynamic, dynamic>? ?? {};
+    final sensorsLatest = sensors['latest'] as Map<dynamic, dynamic>? ?? {};
+    final temperature =
+        (sensorsLatest['temperature'] as num?)?.toDouble() ?? 0.0;
+    final humidity = (sensorsLatest['humidity'] as num?)?.toDouble() ?? 0.0;
+    final soilMoisture =
+        (sensorsLatest['soilMoisture'] as num?)?.toDouble() ?? 0.0;
+
+    final sensorsHistoryData =
+        sensors['history'] as Map<dynamic, dynamic>? ?? {};
+    final List<SensorHistoryItem> sensorHistoryList = [];
+    sensorsHistoryData.forEach((key, value) {
+      if (value is Map) {
+        sensorHistoryList.add(
+          SensorHistoryItem(
+            temperature: (value['temperature'] as num?)?.toDouble() ?? 0.0,
+            humidity: (value['humidity'] as num?)?.toDouble() ?? 0.0,
+            soilMoisture: (value['soilMoisture'] as num?)?.toDouble() ?? 0.0,
+            time: value['time']?.toString() ?? '',
+          ),
+        );
+      }
+    });
+
+    // Sort lịch sử theo thời gian cũ -> mới (để vẽ biểu đồ từ trái sang phải)
+    sensorHistoryList.sort((a, b) => a.time.compareTo(b.time));
+
+    // Sort lịch sử bệnh theo thời gian mới nhất
     historyList.sort((a, b) => b.time.compareTo(a.time));
 
     return Plant(
@@ -76,9 +120,12 @@ class Plant with _$Plant {
       status: stringStatus,
       imageUrl: stringImage,
       videoUrl: videoUrl,
+      temperature: temperature,
+      humidity: humidity,
+      soilMoisture: soilMoisture,
       latestDetection: latestDetection,
       history: historyList,
+      sensorHistory: sensorHistoryList,
     );
   }
 }
-
