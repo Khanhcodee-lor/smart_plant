@@ -1,67 +1,115 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:app_iot/src/core/ulits/logger_ulits.dart';
 import 'package:app_iot/src/features/bluetooth/data/repositories/pi_provision_repository.dart';
 import 'package:app_iot/src/features/bluetooth/data/services/bluetooth_service.dart';
-import 'package:app_iot/src/features/bluetooth/domain/models/bt_classic_device.dart';
 import 'package:app_iot/src/features/bluetooth/domain/models/pi_response.dart';
 import 'package:app_iot/src/features/bluetooth/presentation/controllers/pi_provision_state.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' hide BluetoothService;
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-final piProvisionControllerProvider =
-    StateNotifierProvider.autoDispose<PiProvisionController, PiProvisionState>((
-      ref,
-    ) {
-      final bluetoothService = ref.watch(bluetoothServiceProvider);
-      final repository = ref.watch(piProvisionRepositoryProvider);
-      return PiProvisionController(
-        bluetoothService: bluetoothService,
-        repository: repository,
-      );
+part 'pi_provision_controller.g.dart';
+
+@riverpod
+class PiProvisionController extends _$PiProvisionController {
+  static const Duration _scanTimeout = Duration(seconds: 5);
+  static const Duration _connectTimeout = Duration(seconds: 10);
+  static const int _maxConnectAttempts = 3;
+
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
+  StreamSubscription<BleRepositoryEvent>? _repositoryEventSubscription;
+  StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
+  bool _mounted = true;
+
+  @override
+  PiProvisionState build() {
+    _repositoryEventSubscription = _repository.events.listen(
+      _handleRepositoryEvent,
+    );
+    _adapterStateSubscription = FlutterBluePlus.adapterState.listen(
+      _handleAdapterState,
+    );
+
+    ref.onDispose(() async {
+      _mounted = false;
+      await _scanSubscription?.cancel();
+      await _repositoryEventSubscription?.cancel();
+      await _adapterStateSubscription?.cancel();
     });
 
-class PiProvisionController extends StateNotifier<PiProvisionState> {
-  PiProvisionController({
-    required BluetoothService bluetoothService,
-    required PiProvisionRepository repository,
-  }) : _bluetoothService = bluetoothService,
-       _repository = repository,
-       super(const PiProvisionState());
+    return const PiProvisionState();
+  }
 
-  final BluetoothService _bluetoothService;
-  final PiProvisionRepository _repository;
+  BluetoothService get _bluetoothService => ref.read(bluetoothServiceProvider);
+  PiProvisionRepository get _repository =>
+      ref.read(piProvisionRepositoryProvider);
 
-  Future<void> initialize() async {
-    if (!state.isSupported && state.isInitialized) {
-      return;
+  void _setState(PiProvisionState newState) {
+    if (_mounted) {
+      state = newState;
+    }
+  }
+
+  void _transition({
+    required ProvisionBleStage stage,
+    String? infoMessage,
+    String? errorMessage,
+    String? technicalDetail,
+    String? lastCommandAction,
+    String? statusDebugValue,
+    bool clearError = false,
+  }) {
+    if (errorMessage != null) {
+      LoggerUtils.e('BLE UI error: $errorMessage', technicalDetail);
+    } else {
+      LoggerUtils.i(
+        'BLE UI transition -> ${stage.name}${infoMessage == null ? '' : ' | $infoMessage'}',
+      );
     }
 
-    if (!_bluetoothService.isAndroidSupported) {
-      state = state.copyWith(
-        isSupported: false,
-        isInitialized: true,
-        status: ProvisionFlowStatus.idle,
-        infoMessage: 'RFCOMM Bluetooth Classic chỉ hỗ trợ Android.',
-        errorMessage: null,
+    _setState(
+      state.copyWith(
+        bleStage: stage,
+        infoMessage: infoMessage ?? state.infoMessage,
+        errorMessage: clearError ? null : errorMessage ?? state.errorMessage,
+        lastCommandAction: lastCommandAction ?? state.lastCommandAction,
+        statusDebugValue: statusDebugValue ?? state.statusDebugValue,
+      ),
+    );
+  }
+
+  Future<void> initialize() async {
+    if (!_bluetoothService.isSupported) {
+      _setState(
+        state.copyWith(
+          isSupported: false,
+          isInitialized: true,
+          bleStage: ProvisionBleStage.error,
+          infoMessage: 'Thiết bị không hỗ trợ BLE.',
+          errorMessage: null,
+        ),
       );
       return;
     }
 
     await syncSystemState();
+    if (!_mounted) return;
 
-    if (!mounted) {
-      return;
-    }
-
-    state = state.copyWith(
-      infoMessage: state.permissionsGranted
-          ? state.bluetoothEnabled
-                ? 'Sẵn sàng quét thiết bị khanhpi qua Bluetooth Classic.'
-                : 'Bluetooth đang tắt. Bật Bluetooth để tiếp tục.'
-          : 'Cấp quyền Bluetooth và vị trí để bắt đầu cấu hình.',
-      errorMessage: null,
+    _setState(
+      state.copyWith(
+        infoMessage: state.permissionsGranted
+            ? state.bluetoothEnabled
+                  ? 'Sẵn sàng quét và kết nối BLE tới khanhpi.'
+                  : 'Bluetooth đang tắt. Bật Bluetooth để tiếp tục.'
+            : 'Cấp quyền Bluetooth và vị trí để bắt đầu cấu hình.',
+        errorMessage: null,
+      ),
     );
   }
 
   Future<void> syncSystemState() async {
-    if (!_bluetoothService.isAndroidSupported) {
+    if (!_bluetoothService.isSupported) {
       return;
     }
 
@@ -70,21 +118,31 @@ class PiProvisionController extends StateNotifier<PiProvisionState> {
         ? await _safeBluetoothEnabled()
         : false;
 
-    if (!mounted) {
-      return;
-    }
+    if (!_mounted) return;
 
-    state = state.copyWith(
-      isSupported: true,
-      isInitialized: true,
-      permissionsGranted: permissions.isGranted,
-      permissionsPermanentlyDenied: permissions.isPermanentlyDenied,
-      bluetoothEnabled: enabled,
+    _setState(
+      state.copyWith(
+        isSupported: true,
+        isInitialized: true,
+        permissionsGranted: permissions.isGranted,
+        permissionsPermanentlyDenied: permissions.isPermanentlyDenied,
+        bluetoothEnabled: enabled,
+      ),
     );
+
+    if (!enabled && state.hasConnectedBleSession) {
+      await _repository.disconnect();
+      if (!_mounted) return;
+      _transition(
+        stage: ProvisionBleStage.disconnected,
+        infoMessage: 'Bluetooth đã tắt. Bạn có thể bật lại rồi kết nối lại.',
+        clearError: true,
+      );
+    }
   }
 
   Future<void> requestPermissions() async {
-    if (!_bluetoothService.isAndroidSupported) {
+    if (!_bluetoothService.isSupported) {
       await initialize();
       return;
     }
@@ -94,33 +152,34 @@ class PiProvisionController extends StateNotifier<PiProvisionState> {
         ? await _safeBluetoothEnabled()
         : false;
 
-    if (!mounted) {
-      return;
-    }
+    if (!_mounted) return;
 
-    state = state.copyWith(
-      isInitialized: true,
-      permissionsGranted: permissions.isGranted,
-      permissionsPermanentlyDenied: permissions.isPermanentlyDenied,
-      bluetoothEnabled: enabled,
-      errorMessage: permissions.isGranted
-          ? null
-          : permissions.isPermanentlyDenied
-          ? 'Quyền Bluetooth/Vị trí đang bị chặn vĩnh viễn. Hãy mở Settings để cấp lại.'
-          : 'Bạn cần cấp đủ quyền Bluetooth/Vị trí để quét và kết nối Raspberry Pi.',
-      infoMessage: permissions.isGranted
-          ? enabled
-                ? 'Quyền đã sẵn sàng. Bạn có thể quét thiết bị khanhpi.'
-                : 'Quyền đã sẵn sàng. Bật Bluetooth để quét thiết bị.'
-          : state.infoMessage,
+    _setState(
+      state.copyWith(
+        isInitialized: true,
+        permissionsGranted: permissions.isGranted,
+        permissionsPermanentlyDenied: permissions.isPermanentlyDenied,
+        bluetoothEnabled: enabled,
+        errorMessage: permissions.isGranted
+            ? null
+            : permissions.isPermanentlyDenied
+            ? 'Quyền Bluetooth/Vị trí đang bị chặn vĩnh viễn. Hãy mở Settings để cấp lại.'
+            : 'Bạn cần cấp đủ quyền Bluetooth/Vị trí để quét và kết nối Raspberry Pi.',
+        infoMessage: permissions.isGranted
+            ? enabled
+                  ? 'Quyền đã sẵn sàng. Bạn có thể quét thiết bị khanhpi.'
+                  : 'Quyền đã sẵn sàng. Hãy bật Bluetooth để tiếp tục.'
+            : state.infoMessage,
+      ),
     );
   }
 
   Future<void> enableBluetooth() async {
     if (!state.permissionsGranted) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
+      _transition(
+        stage: ProvisionBleStage.error,
         errorMessage: 'Hãy cấp quyền Bluetooth trước khi bật Bluetooth.',
+        technicalDetail: 'enableBluetooth called without permissionsGranted',
       );
       return;
     }
@@ -137,362 +196,482 @@ class PiProvisionController extends StateNotifier<PiProvisionState> {
         }
       }
 
-      if (!mounted) {
-        return;
-      }
+      if (!_mounted) return;
 
       if (!enabled) {
-        state = state.copyWith(
-          status: ProvisionFlowStatus.error,
-          bluetoothEnabled: false,
+        _transition(
+          stage: ProvisionBleStage.error,
           errorMessage:
               'Bluetooth vẫn đang tắt. Hãy bật từ hộp thoại hệ thống rồi thử lại.',
+          technicalDetail: 'Adapter did not turn on within polling window',
         );
         return;
       }
 
-      state = state.copyWith(
-        bluetoothEnabled: true,
-        status: ProvisionFlowStatus.idle,
-        errorMessage: null,
-        infoMessage: 'Bluetooth đã bật. Bạn có thể quét thiết bị khanhpi.',
+      _transition(
+        stage: ProvisionBleStage.idle,
+        infoMessage:
+            'Bluetooth đã bật. Bạn có thể quét và kết nối tới khanhpi.',
+        clearError: true,
       );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Không thể bật Bluetooth: $error',
+      _setState(state.copyWith(bluetoothEnabled: true));
+    } catch (error, stackTrace) {
+      LoggerUtils.e('Enable Bluetooth failed', error, stackTrace);
+      _transition(
+        stage: ProvisionBleStage.error,
+        errorMessage:
+            'Không thể bật Bluetooth tự động. Hãy bật thủ công rồi thử lại.',
+        technicalDetail: error.toString(),
       );
     }
   }
 
   Future<void> scanBluetoothDevices() async {
-    if (!state.permissionsGranted) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Hãy cấp quyền Bluetooth trước khi quét thiết bị.',
-      );
+    if (!_canStartBlePreparation(requireSelectedDevice: false)) {
       return;
     }
 
-    if (!state.bluetoothEnabled) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Hãy bật Bluetooth trước khi quét thiết bị.',
-      );
-      return;
-    }
+    LoggerUtils.i('BLE scan start');
+    await FlutterBluePlus.stopScan();
+    await _scanSubscription?.cancel();
 
-    state = state.copyWith(
-      status: ProvisionFlowStatus.scanningBt,
-      errorMessage: null,
-      infoMessage: 'Đang tìm Raspberry Pi khanhpi gần bạn...',
+    _transition(
+      stage: ProvisionBleStage.scanning,
+      infoMessage: 'Đang tìm Raspberry Pi khanhpi qua BLE...',
+      clearError: true,
     );
 
+    _setState(state.copyWith(devices: const [], selectedDevice: null));
+
     try {
-      final devices = await _bluetoothService.scanDevices();
-      final selectedDevice =
-          _findPreferredDevice(devices) ??
-          state.selectedDevice ??
-          (devices.isNotEmpty ? devices.first : null);
+      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+        final matchedDevices = results.toList(growable: false);
 
-      if (!mounted) {
-        return;
-      }
+        matchedDevices.sort((a, b) {
+          final aPreferred = a.device.advName.toLowerCase() == 'khanhpi';
+          final bPreferred = b.device.advName.toLowerCase() == 'khanhpi';
+          if (aPreferred != bPreferred) {
+            return aPreferred ? -1 : 1;
+          }
+          return a.device.remoteId.str.compareTo(b.device.remoteId.str);
+        });
 
-      state = state.copyWith(
-        status: ProvisionFlowStatus.idle,
-        devices: devices,
-        selectedDevice: selectedDevice,
-        infoMessage: devices.isEmpty
-            ? 'Không tìm thấy thiết bị Bluetooth Classic nào. Hãy đưa Pi lại gần và quét lại.'
-            : selectedDevice != null && selectedDevice.matchesAlias('khanhpi')
-            ? 'Đã ưu tiên thiết bị khanhpi. Bấm kết nối RFCOMM để tiếp tục.'
-            : 'Đã quét xong. Chọn thiết bị rồi kết nối RFCOMM.',
+        if (matchedDevices.isEmpty || !_mounted) {
+          return;
+        }
+
+        final preferred = matchedDevices.first;
+        _setState(
+          state.copyWith(
+            devices: matchedDevices,
+            selectedDevice: preferred,
+            bleStage: ProvisionBleStage.deviceFound,
+            infoMessage:
+                'Đã tìm thấy khanhpi. Bạn có thể bấm "Kết nối BLE" để chuẩn bị provisioning.',
+            errorMessage: null,
+          ),
+        );
+        LoggerUtils.i('BLE device found: ${preferred.device.remoteId.str}');
+      });
+
+      await FlutterBluePlus.startScan(
+        withServices: [PiProvisionRepository.serviceGuid],
+        timeout: _scanTimeout,
       );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      await Future<void>.delayed(_scanTimeout);
+    } catch (error, stackTrace) {
+      LoggerUtils.e('BLE scan failed', error, stackTrace);
+      _transition(
+        stage: ProvisionBleStage.error,
+        errorMessage: 'Không quét được thiết bị BLE. Hãy thử lại.',
+        technicalDetail: error.toString(),
+      );
+      return;
+    } finally {
+      await FlutterBluePlus.stopScan();
+      LoggerUtils.i('BLE scan stop');
+    }
 
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Quét Bluetooth thất bại: $error',
+    if (!_mounted) return;
+
+    if (state.selectedDevice == null) {
+      _transition(
+        stage: ProvisionBleStage.idle,
+        infoMessage:
+            'Không tìm thấy khanhpi. Hãy đưa Pi lại gần, kiểm tra BLE trên Pi rồi quét lại.',
+        clearError: true,
       );
     }
   }
 
-  void selectDevice(BtClassicDevice device) {
-    state = state.copyWith(selectedDevice: device, errorMessage: null);
+  void selectDevice(ScanResult device) {
+    LoggerUtils.i('BLE device selected: ${device.device.remoteId.str}');
+    _setState(
+      state.copyWith(
+        selectedDevice: device,
+        bleStage: ProvisionBleStage.deviceFound,
+        errorMessage: null,
+        infoMessage: 'Đã chọn ${device.device.advName}. Sẵn sàng kết nối BLE.',
+      ),
+    );
   }
 
-  Future<void> connectSelectedDevice([BtClassicDevice? device]) async {
-    final target =
-        device ?? state.selectedDevice ?? _findPreferredDevice(state.devices);
+  Future<void> connectSelectedDevice([ScanResult? device]) async {
+    await connectAndPrepareBle(preferredDevice: device ?? state.selectedDevice);
+  }
+
+  Future<void> connectAndPrepareBle({ScanResult? preferredDevice}) async {
+    if (!_canStartBlePreparation(requireSelectedDevice: false)) {
+      return;
+    }
+
+    var target = preferredDevice ?? state.selectedDevice;
+    if (target == null) {
+      await scanBluetoothDevices();
+      target = state.selectedDevice;
+    }
 
     if (target == null) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Chưa có thiết bị nào được chọn để kết nối.',
+      _transition(
+        stage: ProvisionBleStage.error,
+        errorMessage: 'Chưa tìm thấy thiết bị khanhpi để kết nối.',
+        technicalDetail: 'No selectedDevice after scan',
       );
       return;
     }
 
-    state = state.copyWith(
-      status: ProvisionFlowStatus.connectingBt,
-      selectedDevice: target,
-      errorMessage: null,
-      infoMessage:
-          'Đang kết nối RFCOMM tới ${target.displayName}. Hệ thống sẽ tự retry tối đa 2 lần.',
-    );
+    await FlutterBluePlus.stopScan();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
 
-    try {
-      await _repository.connectToDevice(target);
-
-      PiWifiStatus? wifiStatus;
+    for (var attempt = 0; attempt < _maxConnectAttempts; attempt++) {
+      final backoffMs = math.pow(2, attempt).toInt() * 400;
       try {
-        wifiStatus = await _repository.wifiStatus();
-      } catch (_) {
-        wifiStatus = null;
-      }
+        _transition(
+          stage: ProvisionBleStage.connecting,
+          infoMessage:
+              'Đang kết nối BLE tới ${target.device.advName} (lần ${attempt + 1}/$_maxConnectAttempts)...',
+          clearError: true,
+        );
+        LoggerUtils.i(
+          'BLE connect attempt ${attempt + 1}/$_maxConnectAttempts: ${target.device.remoteId.str}',
+        );
 
-      if (!mounted) {
+        await _repository.disconnect();
+
+        final currentConnectionState =
+            await target.device.connectionState.first;
+        if (currentConnectionState != BluetoothConnectionState.disconnected) {
+          await target.device.disconnect();
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+        }
+
+        await target.device.connect(
+          autoConnect: false,
+          timeout: _connectTimeout,
+          mtu: null,
+        );
+        LoggerUtils.i('BLE connect success');
+
+        await _repository.prepareConnectedDevice(
+          target.device,
+          onStepChanged: (step) {
+            switch (step) {
+              case BlePreparationStep.discoveringServices:
+                _transition(
+                  stage: ProvisionBleStage.discoveringServices,
+                  infoMessage: 'Đã kết nối BLE. Đang dò BLE services...',
+                  clearError: true,
+                );
+                LoggerUtils.i('BLE discovering services');
+                break;
+              case BlePreparationStep.subscribingStatus:
+                _transition(
+                  stage: ProvisionBleStage.subscribingStatus,
+                  infoMessage: 'Đang subscribe status notify từ Pi...',
+                  clearError: true,
+                );
+                LoggerUtils.i('BLE subscribing status characteristic');
+                break;
+            }
+          },
+        );
+
+        if (!_mounted) return;
+
+        _setState(
+          state.copyWith(
+            selectedDevice: target,
+            bleStage: ProvisionBleStage.ready,
+            wifiNetworks: const [],
+            selectedWifiNetwork: null,
+            wifiPassword: '',
+            errorMessage: null,
+            infoMessage:
+                'BLE đã sẵn sàng. Bạn có thể bấm "Scan Wi-Fi" để lấy danh sách mạng.',
+          ),
+        );
+
+        LoggerUtils.i('BLE ready');
         return;
-      }
+      } catch (error, stackTrace) {
+        LoggerUtils.e('BLE connectAndPrepare failed', error, stackTrace);
+        await _repository.disconnect();
 
-      state = state.copyWith(
-        status: ProvisionFlowStatus.connectedBt,
-        isBluetoothConnected: true,
-        selectedDevice: target,
-        wifiStatus: wifiStatus,
-        errorMessage: null,
-        infoMessage: 'Đã kết nối RFCOMM tới ${target.displayName}.',
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
+        if (attempt == _maxConnectAttempts - 1) {
+          _transition(
+            stage: ProvisionBleStage.error,
+            errorMessage:
+                'Không thể chuẩn bị BLE với khanhpi. Hãy thử lại hoặc khởi động lại Pi.',
+            technicalDetail: error.toString(),
+          );
+          return;
+        }
 
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        isBluetoothConnected: false,
-        errorMessage: 'Kết nối Bluetooth thất bại: $error',
-      );
+        await Future<void>.delayed(Duration(milliseconds: backoffMs));
+      }
     }
   }
 
   Future<void> pingDevice() async {
-    if (!state.isBluetoothConnected) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Thiết bị chưa kết nối Bluetooth.',
-      );
-      return;
-    }
-
-    try {
-      await _repository.ping();
-
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.connectedBt,
-        errorMessage: null,
-        infoMessage: 'Pi phản hồi lệnh ping thành công.',
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Ping thất bại: $error',
-      );
-    }
+    await _runBusinessCommand<PiResponse>(
+      action: 'ping',
+      waitingInfoMessage: 'Đang gửi ping tới Raspberry Pi...',
+      command: _repository.ping,
+      onSuccess: (_) {
+        _transition(
+          stage: ProvisionBleStage.ready,
+          infoMessage: 'Pi phản hồi ping thành công.',
+          clearError: true,
+        );
+      },
+    );
   }
 
   Future<void> scanWifiNetworks() async {
-    if (!state.isBluetoothConnected) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Thiết bị chưa kết nối Bluetooth.',
-      );
-      return;
-    }
+    await _runBusinessCommand<List<PiWifiNetwork>>(
+      action: 'scan_wifi',
+      waitingInfoMessage: 'Pi đang quét danh sách Wi-Fi xung quanh...',
+      command: _repository.scanWifi,
+      onSuccess: (networks) {
+        final selectedNetwork =
+            _findCurrentSelectedNetwork(networks) ??
+            (networks.isNotEmpty ? networks.first : null);
 
-    state = state.copyWith(
-      status: ProvisionFlowStatus.scanningWifi,
-      errorMessage: null,
-      infoMessage: 'Pi đang quét danh sách Wi-Fi xung quanh...',
+        _setState(
+          state.copyWith(
+            bleStage: ProvisionBleStage.ready,
+            wifiNetworks: networks,
+            selectedWifiNetwork: selectedNetwork,
+            errorMessage: null,
+            infoMessage: networks.isEmpty
+                ? 'Pi không tìm thấy Wi-Fi nào trong vùng phủ.'
+                : 'Đã lấy danh sách Wi-Fi. Chọn SSID và nhập mật khẩu để kết nối.',
+          ),
+        );
+      },
     );
+  }
 
-    try {
-      final networks = await _repository.scanWifi();
-      final selectedNetwork =
-          _findCurrentSelectedNetwork(networks) ??
-          (networks.isNotEmpty ? networks.first : null);
-
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.connectedBt,
-        wifiNetworks: networks,
-        selectedWifiNetwork: selectedNetwork,
-        infoMessage: networks.isEmpty
-            ? 'Pi không tìm thấy Wi-Fi nào trong vùng phủ.'
-            : 'Đã lấy danh sách Wi-Fi. Chọn SSID và nhập mật khẩu để kết nối.',
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Quét Wi-Fi thất bại: $error',
-      );
-    }
+  Future<void> refreshWifiStatus() async {
+    await _runBusinessCommand<PiWifiStatus>(
+      action: 'wifi_status',
+      waitingInfoMessage: 'Đang lấy trạng thái Wi-Fi hiện tại từ Pi...',
+      command: _repository.wifiStatus,
+      onSuccess: (status) {
+        _setState(
+          state.copyWith(
+            bleStage: ProvisionBleStage.ready,
+            wifiStatus: status,
+            errorMessage: null,
+            infoMessage: 'Đã cập nhật trạng thái Wi-Fi từ Raspberry Pi.',
+          ),
+        );
+      },
+    );
   }
 
   void selectWifiNetwork(PiWifiNetwork network) {
-    state = state.copyWith(
-      selectedWifiNetwork: network,
-      errorMessage: null,
-      infoMessage: 'Đã chọn SSID ${network.ssid}.',
+    _setState(
+      state.copyWith(
+        selectedWifiNetwork: network,
+        errorMessage: null,
+        infoMessage: 'Đã chọn SSID ${network.ssid}.',
+      ),
     );
   }
 
   void updateWifiPassword(String value) {
-    state = state.copyWith(wifiPassword: value);
+    _setState(state.copyWith(wifiPassword: value));
   }
 
   Future<void> connectWifi() async {
     final network = state.selectedWifiNetwork;
 
-    if (!state.isBluetoothConnected) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Thiết bị chưa kết nối Bluetooth.',
-      );
+    if (!_ensureReadyForBusinessAction('connect_wifi')) {
       return;
     }
 
     if (network == null) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
+      _transition(
+        stage: ProvisionBleStage.error,
         errorMessage: 'Hãy chọn một SSID trước khi kết nối Wi-Fi.',
+        technicalDetail: 'connectWifi called with null selectedWifiNetwork',
       );
       return;
     }
 
     if (network.requiresPassword && state.wifiPassword.trim().isEmpty) {
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
+      _transition(
+        stage: ProvisionBleStage.error,
         errorMessage: 'SSID này yêu cầu mật khẩu Wi-Fi.',
+        technicalDetail: 'Password required but wifiPassword is empty',
       );
       return;
     }
 
-    state = state.copyWith(
-      status: ProvisionFlowStatus.connectingWifi,
-      errorMessage: null,
-      infoMessage: 'Pi đang kết nối tới Wi-Fi ${network.ssid}...',
-    );
-
-    try {
-      final status = await _repository.connectWifi(
+    await _runBusinessCommand<PiWifiStatus>(
+      action: 'connect_wifi',
+      waitingInfoMessage: 'Pi đang kết nối tới Wi-Fi ${network.ssid}...',
+      command: () => _repository.connectWifi(
         ssid: network.ssid,
         password: state.wifiPassword,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.success,
-        wifiStatus: status,
-        errorMessage: null,
-        infoMessage:
-            'Đã cấu hình Wi-Fi thành công cho ${network.ssid}. IP: ${status.ip.isEmpty ? 'chưa có' : status.ip}',
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Kết nối Wi-Fi thất bại: $error',
-      );
-    }
-  }
-
-  Future<void> refreshWifiStatus() async {
-    if (!state.isBluetoothConnected) {
-      return;
-    }
-
-    try {
-      final status = await _repository.wifiStatus();
-
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: status.isConnected
-            ? ProvisionFlowStatus.success
-            : ProvisionFlowStatus.connectedBt,
-        wifiStatus: status,
-        errorMessage: null,
-        infoMessage: 'Đã cập nhật trạng thái Wi-Fi từ Raspberry Pi.',
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      state = state.copyWith(
-        status: ProvisionFlowStatus.error,
-        errorMessage: 'Không lấy được trạng thái Wi-Fi: $error',
-      );
-    }
+      ),
+      onSuccess: (status) {
+        _setState(
+          state.copyWith(
+            bleStage: ProvisionBleStage.ready,
+            wifiStatus: status,
+            errorMessage: null,
+            infoMessage:
+                'Đã cấu hình Wi-Fi thành công cho ${network.ssid}. IP: ${status.ip.isEmpty ? 'chưa có' : status.ip}',
+          ),
+        );
+      },
+    );
   }
 
   Future<void> disconnect() async {
     await _repository.disconnect();
+    if (!_mounted) return;
 
-    if (!mounted) {
-      return;
-    }
-
-    state = state.copyWith(
-      status: ProvisionFlowStatus.idle,
-      isBluetoothConnected: false,
-      wifiNetworks: const [],
-      selectedWifiNetwork: null,
-      wifiStatus: null,
-      infoMessage: 'Đã ngắt kết nối Bluetooth với Raspberry Pi.',
-      errorMessage: null,
+    _setState(
+      state.copyWith(
+        bleStage: ProvisionBleStage.disconnected,
+        wifiNetworks: const [],
+        selectedWifiNetwork: null,
+        wifiStatus: null,
+        wifiPassword: '',
+        infoMessage:
+            'Đã ngắt kết nối BLE với Raspberry Pi. Bạn có thể bấm kết nối lại.',
+        errorMessage: null,
+      ),
     );
   }
 
-  BtClassicDevice? _findPreferredDevice(List<BtClassicDevice> devices) {
-    for (final device in devices) {
-      if (device.matchesAlias('khanhpi')) {
-        return device;
-      }
+  Future<void> _runBusinessCommand<T>({
+    required String action,
+    required String waitingInfoMessage,
+    required Future<T> Function() command,
+    required void Function(T result) onSuccess,
+  }) async {
+    if (!_ensureReadyForBusinessAction(action)) {
+      return;
     }
-    return null;
+
+    _transition(
+      stage: ProvisionBleStage.sendingCommand,
+      infoMessage: waitingInfoMessage,
+      clearError: true,
+      lastCommandAction: action,
+    );
+
+    try {
+      _transition(
+        stage: ProvisionBleStage.waitingResult,
+        infoMessage: waitingInfoMessage,
+        clearError: true,
+        lastCommandAction: action,
+      );
+      final result = await command();
+      if (!_mounted) return;
+      onSuccess(result);
+    } catch (error, stackTrace) {
+      LoggerUtils.e('Business BLE command failed: $action', error, stackTrace);
+      _transition(
+        stage: ProvisionBleStage.error,
+        errorMessage: _friendlyCommandError(action, error),
+        technicalDetail: error.toString(),
+        lastCommandAction: action,
+      );
+    }
+  }
+
+  bool _ensureReadyForBusinessAction(String action) {
+    if (state.canIssueBusinessCommands) {
+      return true;
+    }
+
+    _transition(
+      stage: state.bleStage == ProvisionBleStage.disconnected
+          ? ProvisionBleStage.disconnected
+          : ProvisionBleStage.error,
+      errorMessage:
+          'BLE chưa sẵn sàng. Hãy kết nối BLE với khanhpi trước khi thao tác.',
+      technicalDetail:
+          'Blocked action=$action because bleStage=${state.bleStage.name}',
+      lastCommandAction: action,
+    );
+    return false;
+  }
+
+  bool _canStartBlePreparation({required bool requireSelectedDevice}) {
+    if (!state.permissionsGranted) {
+      _transition(
+        stage: ProvisionBleStage.error,
+        errorMessage: 'Hãy cấp quyền Bluetooth trước khi tiếp tục.',
+        technicalDetail: 'permissionsGranted=false',
+      );
+      return false;
+    }
+
+    if (!state.bluetoothEnabled) {
+      _transition(
+        stage: ProvisionBleStage.error,
+        errorMessage: 'Hãy bật Bluetooth trước khi quét hoặc kết nối BLE.',
+        technicalDetail: 'bluetoothEnabled=false',
+      );
+      return false;
+    }
+
+    if (state.isBusy) {
+      return false;
+    }
+
+    if (requireSelectedDevice && state.selectedDevice == null) {
+      _transition(
+        stage: ProvisionBleStage.error,
+        errorMessage: 'Hãy chọn thiết bị khanhpi trước khi kết nối.',
+        technicalDetail: 'selectedDevice=null',
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  String _friendlyCommandError(String action, Object error) {
+    switch (action) {
+      case 'scan_wifi':
+        return 'Quét Wi-Fi thất bại. Hãy kiểm tra BLE với Pi rồi thử lại.';
+      case 'connect_wifi':
+        return 'Kết nối Wi-Fi thất bại. Hãy kiểm tra SSID, mật khẩu và thử lại.';
+      case 'wifi_status':
+        return 'Không lấy được trạng thái Wi-Fi từ Pi.';
+      case 'ping':
+        return 'Pi chưa phản hồi ping. Hãy thử kết nối lại BLE.';
+      default:
+        return 'Thao tác BLE thất bại. Hãy thử lại.';
+    }
   }
 
   PiWifiNetwork? _findCurrentSelectedNetwork(List<PiWifiNetwork> networks) {
@@ -512,8 +691,53 @@ class PiProvisionController extends StateNotifier<PiProvisionState> {
   Future<bool> _safeBluetoothEnabled() async {
     try {
       return await _bluetoothService.isBluetoothEnabled();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      LoggerUtils.e('Bluetooth enabled check failed', error, stackTrace);
       return false;
+    }
+  }
+
+  void _handleRepositoryEvent(BleRepositoryEvent event) {
+    switch (event.type) {
+      case BleRepositoryEventType.disconnected:
+        if (!_mounted) return;
+        _setState(
+          state.copyWith(
+            bleStage: ProvisionBleStage.disconnected,
+            wifiNetworks: const [],
+            selectedWifiNetwork: null,
+            wifiStatus: null,
+            wifiPassword: '',
+            infoMessage:
+                event.message ??
+                'Kết nối BLE đã bị ngắt. Bạn có thể bấm kết nối lại.',
+            errorMessage: null,
+          ),
+        );
+        break;
+    }
+  }
+
+  void _handleAdapterState(BluetoothAdapterState adapterState) {
+    LoggerUtils.i('BLE adapter state changed: ${adapterState.name}');
+    final enabled = adapterState == BluetoothAdapterState.on;
+
+    if (!_mounted) return;
+    _setState(state.copyWith(bluetoothEnabled: enabled));
+
+    if (!enabled && state.hasConnectedBleSession) {
+      unawaited(_repository.disconnect());
+      _setState(
+        state.copyWith(
+          bleStage: ProvisionBleStage.disconnected,
+          wifiNetworks: const [],
+          selectedWifiNetwork: null,
+          wifiStatus: null,
+          infoMessage:
+              'Bluetooth đã bị tắt giữa chừng. Hãy bật lại rồi kết nối BLE lại.',
+          errorMessage: null,
+        ),
+      );
     }
   }
 }

@@ -1,6 +1,6 @@
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
-import 'package:app_iot/src/features/bluetooth/domain/models/bt_classic_device.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:app_iot/src/features/bluetooth/domain/models/pi_response.dart';
 import 'package:app_iot/src/features/bluetooth/presentation/controllers/pi_provision_controller.dart';
 import 'package:app_iot/src/features/bluetooth/presentation/controllers/pi_provision_state.dart';
@@ -117,7 +117,7 @@ class _BluetoothProvisionBodyState
             _buildBluetoothPowerCard(state, controller),
             SizedBox(height: 14.h),
             _buildDeviceCard(state, controller),
-            if (state.isBluetoothConnected) ...[
+            if (state.showPiActions) ...[
               SizedBox(height: 14.h),
               _buildPiActionsCard(state, controller),
               SizedBox(height: 14.h),
@@ -190,7 +190,7 @@ class _BluetoothProvisionBodyState
           ),
           SizedBox(height: 12.h),
           Text(
-            'Màn hình này dùng Bluetooth Classic RFCOMM nên chỉ hỗ trợ Android. Trên iOS, vui lòng hiển thị thông báo không hỗ trợ và cấu hình bằng điện thoại Android thật.',
+            'Màn hình này dùng Bluetooth Low Energy (BLE) nên hỗ trợ cả Android và iOS.',
             style: TextStyle(
               fontSize: 14.sp,
               height: 1.5,
@@ -299,15 +299,15 @@ class _BluetoothProvisionBodyState
             step: '3-4',
             title: 'Tìm và kết nối Raspberry Pi',
             subtitle:
-                'Ưu tiên thiết bị alias khanhpi và kết nối RFCOMM channel 4',
+                'Ưu tiên thiết bị alias khanhpi và cấu hình qua kết nối BLE',
           ),
           SizedBox(height: 16.h),
-          if (state.status == ProvisionFlowStatus.scanningBt) ...[
+          if (state.bleStage == ProvisionBleStage.scanning) ...[
             const Center(child: RadarScanIndicator()),
             SizedBox(height: 14.h),
             Center(
               child: Text(
-                'Đang quét Bluetooth Classic...',
+                'Đang quét Bluetooth Low Energy (BLE)...',
                 style: TextStyle(
                   fontSize: 13.sp,
                   color: AppColors.textSecondary,
@@ -331,17 +331,21 @@ class _BluetoothProvisionBodyState
                 label: const Text('Quét thiết bị'),
               ),
               OutlinedButton.icon(
-                onPressed: state.selectedDevice != null && !state.isBusy
+                onPressed: state.canStartConnect
                     ? () => controller.connectSelectedDevice()
                     : null,
                 icon: const Icon(Icons.bluetooth_connected_rounded),
-                label: const Text('Kết nối RFCOMM'),
+                label: Text(
+                  state.bleStage == ProvisionBleStage.disconnected
+                      ? 'Kết nối lại BLE'
+                      : 'Kết nối BLE',
+                ),
               ),
             ],
           ),
           SizedBox(height: 18.h),
           if (state.devices.isEmpty &&
-              state.status != ProvisionFlowStatus.scanningBt)
+              state.bleStage != ProvisionBleStage.scanning)
             Text(
               'Chưa có thiết bị nào. Sau khi bật Bluetooth, bấm "Quét thiết bị" để tìm Pi.',
               style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
@@ -365,10 +369,16 @@ class _BluetoothProvisionBodyState
   Widget _buildDeviceTile(
     PiProvisionState state,
     PiProvisionController controller,
-    BtClassicDevice device,
+    ScanResult device,
   ) {
-    final selected = state.selectedDevice?.address == device.address;
-    final preferred = device.matchesAlias('khanhpi');
+    final selected =
+        state.selectedDevice?.device.remoteId.str == device.device.remoteId.str;
+    final dName = device.device.advName.isNotEmpty
+        ? device.device.advName
+        : (device.device.platformName.isNotEmpty
+              ? device.device.platformName
+              : 'Chưa đặt tên');
+    final preferred = dName.toLowerCase() == 'khanhpi';
 
     return InkWell(
       onTap: state.isBusy ? null : () => controller.selectDevice(device),
@@ -412,7 +422,7 @@ class _BluetoothProvisionBodyState
                     children: [
                       Expanded(
                         child: Text(
-                          device.displayName,
+                          dName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -424,15 +434,11 @@ class _BluetoothProvisionBodyState
                       ),
                       if (preferred)
                         _buildMiniBadge('Ưu tiên', AppColors.success),
-                      if (device.isBonded) ...[
-                        SizedBox(width: 6.w),
-                        _buildMiniBadge('Paired', AppColors.info),
-                      ],
                     ],
                   ),
                   SizedBox(height: 4.h),
                   Text(
-                    device.address,
+                    device.device.remoteId.str,
                     style: TextStyle(
                       fontSize: 12.sp,
                       color: AppColors.textSecondary,
@@ -469,36 +475,62 @@ class _BluetoothProvisionBodyState
           ),
           SizedBox(height: 14.h),
           _buildStatusRow(
-            label: 'RFCOMM',
-            value: state.isBluetoothConnected
-                ? 'Đã kết nối tới ${state.selectedDevice?.displayName ?? 'Pi'}'
-                : 'Chưa kết nối',
-            color: state.isBluetoothConnected
+            label: 'BLE State',
+            value: state.hasConnectedBleSession
+                ? '${state.bleStageLabel} • ${state.selectedDevice?.device.advName ?? 'khanhpi'}'
+                : state.bleStageLabel,
+            color: state.canIssueBusinessCommands
                 ? AppColors.success
+                : state.bleStage == ProvisionBleStage.error
+                ? AppColors.error
                 : AppColors.warning,
           ),
+          if (state.lastCommandAction != null) ...[
+            SizedBox(height: 10.h),
+            _buildStatusRow(
+              label: 'Last Cmd',
+              value: state.lastCommandAction!,
+              color: AppColors.info,
+            ),
+          ],
+          if (state.statusDebugValue != null) ...[
+            SizedBox(height: 10.h),
+            _buildStatusRow(
+              label: 'Status Notify',
+              value: state.statusDebugValue!,
+              color: AppColors.info,
+            ),
+          ],
           SizedBox(height: 16.h),
           Wrap(
             spacing: 10.w,
             runSpacing: 10.h,
             children: [
               FilledButton.icon(
-                onPressed: state.isBusy ? null : controller.pingDevice,
+                onPressed: state.canIssueBusinessCommands && !state.isBusy
+                    ? controller.pingDevice
+                    : null,
                 icon: const Icon(Icons.wifi_tethering_rounded),
                 label: const Text('Ping'),
               ),
               OutlinedButton.icon(
-                onPressed: state.isBusy ? null : controller.scanWifiNetworks,
+                onPressed: state.canIssueBusinessCommands && !state.isBusy
+                    ? controller.scanWifiNetworks
+                    : null,
                 icon: const Icon(Icons.wifi_find_rounded),
                 label: const Text('Scan Wi-Fi'),
               ),
               OutlinedButton.icon(
-                onPressed: state.isBusy ? null : controller.refreshWifiStatus,
+                onPressed: state.canIssueBusinessCommands && !state.isBusy
+                    ? controller.refreshWifiStatus
+                    : null,
                 icon: const Icon(Icons.sync_rounded),
                 label: const Text('Wi-Fi status'),
               ),
               TextButton.icon(
-                onPressed: state.isBusy ? null : controller.disconnect,
+                onPressed: state.hasConnectedBleSession && !state.isBusy
+                    ? controller.disconnect
+                    : null,
                 icon: const Icon(Icons.link_off_rounded),
                 label: const Text('Ngắt kết nối'),
               ),
@@ -636,7 +668,10 @@ class _BluetoothProvisionBodyState
           ),
           SizedBox(height: 16.h),
           TextField(
-            enabled: network != null && !state.isBusy,
+            enabled:
+                network != null &&
+                !state.isBusy &&
+                state.canIssueBusinessCommands,
             obscureText: _obscurePassword,
             onChanged: controller.updateWifiPassword,
             decoration: InputDecoration(
@@ -662,7 +697,10 @@ class _BluetoothProvisionBodyState
           ),
           SizedBox(height: 16.h),
           FilledButton.icon(
-            onPressed: network != null && !state.isBusy
+            onPressed:
+                network != null &&
+                    !state.isBusy &&
+                    state.canIssueBusinessCommands
                 ? controller.connectWifi
                 : null,
             icon: const Icon(Icons.router_rounded),
@@ -722,7 +760,9 @@ class _BluetoothProvisionBodyState
             ),
             SizedBox(height: 16.h),
             OutlinedButton.icon(
-              onPressed: state.isBusy ? null : controller.refreshWifiStatus,
+              onPressed: state.canIssueBusinessCommands && !state.isBusy
+                  ? controller.refreshWifiStatus
+                  : null,
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Làm mới trạng thái'),
             ),

@@ -10,7 +10,9 @@ abstract class PiRequest {
   String toLine() => '${jsonEncode(toJson())}\n';
 
   factory PiRequest.ping() = PingPiRequest;
-  factory PiRequest.scanWifi() = ScanWifiPiRequest;
+  factory PiRequest.scanWifi({int limit = 12}) {
+    return ScanWifiPiRequest(limit: limit);
+  }
   factory PiRequest.wifiStatus() = WifiStatusPiRequest;
   factory PiRequest.connectWifi({
     required String ssid,
@@ -29,13 +31,15 @@ class PingPiRequest extends PiRequest {
 }
 
 class ScanWifiPiRequest extends PiRequest {
-  const ScanWifiPiRequest();
+  const ScanWifiPiRequest({this.limit = 12});
+
+  final int limit;
 
   @override
   String get action => 'scan_wifi';
 
   @override
-  Map<String, dynamic> toJson() => {'action': action};
+  Map<String, dynamic> toJson() => {'action': action, 'limit': limit};
 }
 
 class WifiStatusPiRequest extends PiRequest {
