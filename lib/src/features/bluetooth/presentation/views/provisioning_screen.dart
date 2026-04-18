@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:app_iot/src/features/bluetooth/domain/models/pi_response.dart';
 import 'package:app_iot/src/features/bluetooth/data/services/pi_ble_provisioning_client.dart';
 
