@@ -17,4 +17,22 @@ void main() {
     expect(second.first['action'], 'wifi_status');
     expect(parser.pendingBuffer, isEmpty);
   });
+
+  test(
+    'JsonLineParser giữ được escape unicode khi chunk bị cắt giữa chuỗi',
+    () {
+      final parser = JsonLineParser();
+
+      final first = parser.append(
+        '{"ok":true,"action":"scan_wifi","networks":[{"ssid":"\\ud83d',
+      );
+      final second = parser.append(
+        '\\ude43","signal":52,"security":"WPA1 WPA2"}]}\n',
+      );
+
+      expect(first, isEmpty);
+      expect(second, hasLength(1));
+      expect(second.first['action'], 'scan_wifi');
+    },
+  );
 }
