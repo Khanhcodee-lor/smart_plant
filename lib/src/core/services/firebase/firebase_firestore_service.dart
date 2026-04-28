@@ -3,6 +3,13 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'firebase_firestore_service.g.dart';
 
+class FirestoreDocumentData {
+  const FirestoreDocumentData({required this.id, required this.data});
+
+  final String id;
+  final Map<String, dynamic> data;
+}
+
 class FirebaseFirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -13,18 +20,34 @@ class FirebaseFirestoreService {
     });
   }
 
+  // Get a collection stream with document ids
+  Stream<List<FirestoreDocumentData>> collectionStreamWithIds(String path) {
+    return _db.collection(path).snapshots().map((snapshot) {
+      return snapshot.docs
+          .map((doc) => FirestoreDocumentData(id: doc.id, data: doc.data()))
+          .toList();
+    });
+  }
+
   // Get a document stream
   Stream<Map<String, dynamic>?> documentStream(String path) {
     return _db.doc(path).snapshots().map((snapshot) => snapshot.data());
   }
 
   // Create or Update
-  Future<void> setData(String path, Map<String, dynamic> data, {bool merge = true}) async {
+  Future<void> setData(
+    String path,
+    Map<String, dynamic> data, {
+    bool merge = true,
+  }) async {
     await _db.doc(path).set(data, SetOptions(merge: merge));
   }
 
   // Add document to collection
-  Future<DocumentReference> addDocument(String path, Map<String, dynamic> data) async {
+  Future<DocumentReference> addDocument(
+    String path,
+    Map<String, dynamic> data,
+  ) async {
     return await _db.collection(path).add(data);
   }
 
@@ -35,6 +58,8 @@ class FirebaseFirestoreService {
 }
 
 @riverpod
-FirebaseFirestoreService firebaseFirestoreService(FirebaseFirestoreServiceRef ref) {
+FirebaseFirestoreService firebaseFirestoreService(
+  FirebaseFirestoreServiceRef ref,
+) {
   return FirebaseFirestoreService();
 }

@@ -23,6 +23,7 @@ abstract class BaseView extends ConsumerWidget {
           appBar: buildAppBar(context, ref),
           drawer: buildDrawer(context, ref),
           floatingActionButton: buildFloatingActionButton(context, ref),
+          floatingActionButtonLocation: floatingActionButtonLocation(context),
           bottomNavigationBar: buildBottomNavigationBar(context, ref),
           resizeToAvoidBottomInset: resizeToAvoidBottomInset(),
           // 3. Stack để đè Loading lên trên cùng
@@ -103,6 +104,9 @@ abstract class BaseView extends ConsumerWidget {
   Widget? buildDrawer(BuildContext context, WidgetRef ref) => null;
   Widget? buildFloatingActionButton(BuildContext context, WidgetRef ref) =>
       null;
+  FloatingActionButtonLocation? floatingActionButtonLocation(
+    BuildContext context,
+  ) => null;
   Widget? buildBottomNavigationBar(BuildContext context, WidgetRef ref) => null;
 
   // --- CONFIGURATION (Cấu hình) ---

@@ -1,3 +1,4 @@
+import 'package:app_iot/src/core/ulits/logger_ulits.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -56,7 +57,17 @@ class FirebaseAuthService {
   }
 
   Future<void> signOut() async {
-    await Future.wait([_auth.signOut(), _googleSignIn.signOut()]);
+    await _auth.signOut();
+
+    try {
+      await _googleSignIn.signOut();
+    } catch (error, stackTrace) {
+      LoggerUtils.e(
+        'Google sign-out failed after Firebase sign-out',
+        error,
+        stackTrace,
+      );
+    }
   }
 
   // quên mật khẩu
@@ -69,6 +80,7 @@ class FirebaseAuthService {
 FirebaseAuthService firebaseAuthService(FirebaseAuthServiceRef ref) {
   return FirebaseAuthService();
 }
+
 /*
 Service inject được ở mọi nơi
 Không cần new FirebaseAuthService()

@@ -1,40 +1,30 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
+import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_command_controller.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/controllers/plant_detections_provider.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/capture_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/current_disease_card_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_history_list_widget.dart';
-import 'package:app_iot/src/features/disease_detection/presentation/widgets/video_stream_widget.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
+import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
 import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 
 class DiseaseDetectionScreen extends BaseView {
   final String plantId;
+
   const DiseaseDetectionScreen({super.key, required this.plantId});
 
   @override
   bool extendBodyBehindAppBar() => true;
 
   @override
-  Widget? buildFloatingActionButton(BuildContext context, WidgetRef ref) {
-    return FloatingActionButton(
-      backgroundColor: AppColors.accent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.r)),
-      elevation: 4,
-      onPressed: () {
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => const AiChatbotSheet(),
-        );
-      },
-      child: Icon(Icons.auto_awesome, color: Colors.white, size: 24.sp),
-    );
-  }
+  Widget? buildFloatingActionButton(BuildContext context, WidgetRef ref) => null;
 
   @override
   AppBar? buildAppBar(BuildContext context, WidgetRef ref) {
@@ -48,21 +38,17 @@ class DiseaseDetectionScreen extends BaseView {
         fontWeight: FontWeight.w600,
       ),
       centerTitle: true,
-      title: ref
-          .watch(plantControllerProvider)
-          .when(
-            data: (plants) {
-              // Lấy đúng cây theo plantId
-              final plantIndex = plants.indexWhere((p) => p.id == plantId);
-              if (plantIndex == -1) {
-                return const Text('Không tìm thấy dữ liệu cây');
-              }
-              final plant = plants[plantIndex];
-              return Text(plant.name);
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
-          ),
+      title: ref.watch(plantControllerProvider).when(
+        data: (plants) {
+          final plant = _resolvePlantForScreen(plants, plantId);
+          if (plant == null) {
+            return const Text('Không tìm thấy dữ liệu cây');
+          }
+          return Text(plant.name);
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
+      ),
     );
   }
 
@@ -70,9 +56,9 @@ class DiseaseDetectionScreen extends BaseView {
   Decoration? bodyDecoration(BuildContext context) {
     return BoxDecoration(
       gradient: LinearGradient(
-        transform: GradientRotation(0.3),
+        transform: const GradientRotation(0.3),
         tileMode: TileMode.clamp,
-        stops: [0.0, 0.7],
+        stops: const [0.0, 0.7],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
@@ -86,54 +72,265 @@ class DiseaseDetectionScreen extends BaseView {
   @override
   Widget buildBody(BuildContext context, WidgetRef ref) {
     final plantAsyncValue = ref.watch(plantControllerProvider);
+    final detectionsAsyncValue = ref.watch(plantDetectionsProvider(plantId));
 
     return SizedBox.expand(
-      child: AppRefreshScrollView(
-        onRefresh: () async {
-          // Chỉ việc gọi logic refresh của màn hình này
-          return await ref.refresh(plantControllerProvider.future);
-        },
-        child: plantAsyncValue.when(
-          data: (plants) {
-            // Lấy đúng cây theo plantId
-            final plantIndex = plants.indexWhere((p) => p.id == plantId);
-            if (plantIndex == -1) {
-              return Center(
-                child: Text('Không tìm thấy dữ liệu cây ($plantId)'),
-              );
-            }
-            final plant = plants[plantIndex];
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: AppRefreshScrollView(
+              onRefresh: () async {
+                ref.invalidate(plantControllerProvider);
+                ref.invalidate(plantDetectionsProvider(plantId));
 
-            return SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 2. Video Stream Widget
-                  VideoStreamWidget(videoUrl: plant.videoUrl),
-                  SizedBox(height: 20.h),
+                await Future.wait([
+                  ref.read(plantControllerProvider.future),
+                  ref.read(plantDetectionsProvider(plantId).future),
+                ]);
+              },
+              child: plantAsyncValue.when(
+                data: (plants) {
+                  final plant = _resolvePlantForScreen(plants, plantId);
+                  if (plant == null) {
+                    return Center(
+                      child: Text('Không tìm thấy dữ liệu cây ($plantId)'),
+                    );
+                  }
 
-                  // 3. Current Disease Card
-                  CurrentDiseaseCardWidget(
-                    latestDetection: plant.latestDetection,
-                  ),
-                  SizedBox(height: 20.h),
+                  final firestoreDetections = detectionsAsyncValue.asData?.value;
+                  final latestDetection =
+                      firestoreDetections?.latestDetection ??
+                      plant.latestDetection;
+                  final history =
+                      (firestoreDetections?.history.isNotEmpty ?? false)
+                      ? firestoreDetections!.history
+                      : plant.history;
+                  final latestDetections =
+                      (firestoreDetections?.latestDetections.isNotEmpty ?? false)
+                      ? firestoreDetections!.latestDetections
+                      : (latestDetection != null
+                            ? <DetectionItem>[latestDetection]
+                            : history.take(1).toList());
+                  final latestSnapshotUrl =
+                      _firstNonEmptySnapshot([...latestDetections, ...history]) ??
+                      firestoreDetections?.latestSnapshotUrl.trim() ??
+                      latestDetection?.snapshotUrl.trim() ??
+                      '';
+                  final latestCapturedAt =
+                      _firstNonEmptyTime([...latestDetections, ...history]) ??
+                      firestoreDetections?.latestCapturedAt.trim() ??
+                      latestDetection?.time.trim() ??
+                      '';
 
-                  // 4. Lịch sử bệnh (History List)
-                  "Lịch sử phát hiện".h1Custom(
-                    size: 16.sp,
-                    color: AppColors.textMain,
-                  ),
-                  SizedBox(height: 12.h),
-                  DiseaseHistoryListWidget(history: plant.history),
-                  SizedBox(height: 30.h),
-                ],
+                  return SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LatestSnapshotCardWidget(
+                          snapshotUrl: latestSnapshotUrl,
+                          capturedAt: latestCapturedAt,
+                        ),
+                        SizedBox(height: 20.h),
+                        CurrentDiseaseCardWidget(
+                          latestDetection: latestDetection,
+                        ),
+                        SizedBox(height: 20.h),
+                        "Danh sách bệnh mới nhất".h1Custom(
+                          size: 16.sp,
+                          color: AppColors.textMain,
+                        ),
+                        SizedBox(height: 12.h),
+                        DiseaseHistoryListWidget(
+                          items: latestDetections,
+                          emptyMessage: 'Chưa có dữ liệu bệnh mới nhất',
+                        ),
+                        SizedBox(height: 24.h),
+                        "Lịch sử chụp".h1Custom(
+                          size: 16.sp,
+                          color: AppColors.textMain,
+                        ),
+                        SizedBox(height: 12.h),
+                        CaptureHistoryListWidget(
+                          items: history,
+                          emptyMessage: 'Chưa có lịch sử chụp để hiển thị',
+                        ),
+                        SizedBox(height: 120.h),
+                      ],
+                    ),
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) =>
+                    Center(child: Text('Lỗi tải dữ liệu: $error')),
               ),
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 8.h,
+            child: _BottomActionButtons(
+              plantId: plantId,
+              onCapturePressed: () => _handleCapturePressed(context, ref),
+              onAiPressed: () => _showAiAssistant(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAiAssistant(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const AiChatbotSheet(),
+    );
+  }
+
+  Future<void> _handleCapturePressed(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final inFlight = ref.read(
+      plantCaptureCommandInFlightProvider(plantId).notifier,
+    );
+    if (inFlight.state) {
+      return;
+    }
+
+    inFlight.state = true;
+    try {
+      await ref.read(plantCaptureCommandServiceProvider).requestCapture(plantId);
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã gửi lệnh chụp hình cho thiết bị')),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gửi lệnh chụp thất bại: $error')),
+      );
+    } finally {
+      inFlight.state = false;
+    }
+  }
+}
+
+class _BottomActionButtons extends ConsumerWidget {
+  final String plantId;
+  final VoidCallback onCapturePressed;
+  final VoidCallback onAiPressed;
+
+  const _BottomActionButtons({
+    required this.plantId,
+    required this.onCapturePressed,
+    required this.onAiPressed,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isSendingCapture = ref.watch(
+      plantCaptureCommandInFlightProvider(plantId),
+    );
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: SizedBox(
+        height: 56.h,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.center,
+              child: FloatingActionButton(
+                heroTag: 'capture_$plantId',
+                tooltip: 'Chụp hình',
+                backgroundColor: AppColors.accent,
+                elevation: 4,
+                onPressed: isSendingCapture ? null : onCapturePressed,
+                child: isSendingCapture
+                    ? SizedBox(
+                        width: 24.w,
+                        height: 24.w,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        Icons.photo_camera_outlined,
+                        color: Colors.white,
+                        size: 24.sp,
+                      ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FloatingActionButton(
+                heroTag: 'ai_$plantId',
+                tooltip: 'AI',
+                backgroundColor: AppColors.accent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30.r),
+                ),
+                elevation: 4,
+                onPressed: onAiPressed,
+                child: Icon(
+                  Icons.auto_awesome,
+                  color: Colors.white,
+                  size: 24.sp,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+String? _firstNonEmptySnapshot(Iterable<DetectionItem> items) {
+  for (final item in items) {
+    final snapshot = item.snapshotUrl.trim();
+    if (snapshot.isNotEmpty) {
+      return snapshot;
+    }
+  }
+
+  return null;
+}
+
+String? _firstNonEmptyTime(Iterable<DetectionItem> items) {
+  for (final item in items) {
+    final time = item.time.trim();
+    if (time.isNotEmpty) {
+      return time;
+    }
+  }
+
+  return null;
+}
+
+Plant? _resolvePlantForScreen(List<Plant> plants, String plantId) {
+  for (final plant in plants) {
+    if (plant.id == plantId) {
+      return plant;
+    }
+  }
+
+  for (final plant in plants) {
+    if (plant.id == 'all') {
+      return plant;
+    }
+  }
+
+  return null;
 }

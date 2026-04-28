@@ -1,11 +1,12 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
+import 'package:app_iot/src/features/chatbot/presentation/controllers/chatbot_controller.dart';
+import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
-import 'package:app_iot/src/features/chatbot/presentation/controllers/chatbot_controller.dart';
 
 class CurrentDiseaseCardWidget extends ConsumerWidget {
   final DetectionItem? latestDetection;
@@ -18,49 +19,44 @@ class CurrentDiseaseCardWidget extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final Map<String, String> diseaseTranslations = {
-      'healthy': 'Khỏe mạnh',
-      'tomato leaf late blight': 'Bệnh mốc sương trên lá cà chua',
-      'tomato leaf early blight': 'Bệnh đốm vòng trên lá cà chua',
-      'tomato leaf mold': 'Bệnh nấm lá cà chua',
-      'tomato yellow leaf curl virus': 'Bệnh xoăn vàng lá do virus',
-      'tomato mosaic virus': 'Bệnh khảm lá do virus',
-      'tomato septoria leaf spot': 'Bệnh đốm lá Septoria',
-      'tomato spider mites two-spotted spider mite': 'Nhện đỏ',
-      'tomato target spot': 'Bệnh đốm vòng (Target Spot)',
-      'tomato bacterial spot': 'Bệnh đốm vi khuẩn',
-      // Thêm các bệnh khác nếu cần
-    };
-
-    String translateDisease(String diseaseName) {
-      return diseaseTranslations[diseaseName.toLowerCase()] ?? diseaseName;
-    }
-
-    final isHealthy = latestDetection!.diseaseClass.toLowerCase() == 'healthy';
+    final detection = latestDetection!;
+    final isHealthy = isHealthyDisease(detection.diseaseClass);
     final cardColor = isHealthy ? Colors.green.shade50 : Colors.red.shade50;
     final iconColor = isHealthy ? Colors.green : Colors.red;
     final iconData = isHealthy
         ? Icons.check_circle_outline
         : Icons.warning_amber_rounded;
+    final metadataWidgets = <Widget>[
+      if (detection.confidence > 0)
+        "Độ tin cậy: ${(detection.confidence * 100).toStringAsFixed(1)}%"
+            .bodyCustom(size: 12.sp, color: AppColors.disabledText),
+      if (detection.time.trim().isNotEmpty)
+        Text(
+          detection.time,
+          style: TextStyle(fontSize: 12.sp, color: AppColors.disabledText),
+        ),
+    ];
 
     return InkWell(
       onTap: () {
-        if (!isHealthy) {
-          final translated = translateDisease(latestDetection!.diseaseClass);
-          final prompt =
-              "Cây của tôi đang bị '$translated'. Bạn có thể cho tôi biết nguyên nhân và cách phòng trị bệnh này không?";
-
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (context) => const AiChatbotSheet(),
-          );
-
-          Future.delayed(const Duration(milliseconds: 300), () {
-            ref.read(chatbotControllerProvider.notifier).sendMessage(prompt);
-          });
+        if (isHealthy) {
+          return;
         }
+
+        final translated = translateDiseaseLabel(detection.diseaseClass);
+        final prompt =
+            "Cây của tôi đang bị '$translated'. Bạn có thể cho tôi biết nguyên nhân và cách phòng trị bệnh này không?";
+
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => const AiChatbotSheet(),
+        );
+
+        Future.delayed(const Duration(milliseconds: 300), () {
+          ref.read(chatbotControllerProvider.notifier).sendMessage(prompt);
+        });
       },
       borderRadius: BorderRadius.circular(16.r),
       child: Container(
@@ -86,31 +82,20 @@ class CurrentDiseaseCardWidget extends ConsumerWidget {
                     fontWeight: FontWeight.bold,
                   ),
                   SizedBox(height: 4.h),
-                  translateDisease(latestDetection!.diseaseClass).bodyCustom(
+                  translateDiseaseLabel(detection.diseaseClass).bodyCustom(
                     size: 16.sp,
                     color: iconColor,
                     fontWeight: FontWeight.w600,
                   ),
-                  SizedBox(height: 8.h),
-                  Wrap(
-                    spacing: 12.w,
-                    runSpacing: 4.h,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      "Độ tin cậy: ${(latestDetection!.confidence * 100).toStringAsFixed(1)}%"
-                          .bodyCustom(
-                            size: 12.sp,
-                            color: AppColors.disabledText,
-                          ),
-                      Text(
-                        latestDetection!.time,
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: AppColors.disabledText,
-                        ),
-                      ),
-                    ],
-                  ),
+                  if (metadataWidgets.isNotEmpty) ...[
+                    SizedBox(height: 8.h),
+                    Wrap(
+                      spacing: 12.w,
+                      runSpacing: 4.h,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: metadataWidgets,
+                    ),
+                  ],
                 ],
               ),
             ),

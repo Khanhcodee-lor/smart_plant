@@ -17,6 +17,8 @@ class ProfileHeader extends ConsumerWidget {
         Container(
           width: 90.w,
           height: 90.w,
+          clipBehavior: Clip.antiAlias,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: AppColors.surface,
             shape: BoxShape.circle,
@@ -31,18 +33,36 @@ class ProfileHeader extends ConsumerWidget {
                 offset: const Offset(0, 6),
               ),
             ],
-            image: DecorationImage(
-              image: user?.photoUrl != null && user!.photoUrl!.isNotEmpty
-                  ? NetworkImage(user.photoUrl!)
-                  : const NetworkImage("https://via.placeholder.com/150")
-                        as ImageProvider,
-              fit: BoxFit.cover,
-            ),
           ),
+          child: _buildAvatar(user?.photoUrl),
         ),
         SizedBox(height: 12.h),
         (user?.name ?? "Người dùng").h2Custom(size: 20.sp),
       ],
+    );
+  }
+
+  Widget _buildAvatar(String? photoUrl) {
+    if (photoUrl == null || photoUrl.isEmpty) {
+      return Icon(
+        Icons.person_rounded,
+        color: AppColors.textSecondary.withOpacity(0.5),
+        size: 40.sp,
+      );
+    }
+
+    return Image.network(
+      photoUrl,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (context, error, stackTrace) {
+        return Icon(
+          Icons.person_rounded,
+          color: AppColors.textSecondary.withOpacity(0.5),
+          size: 40.sp,
+        );
+      },
     );
   }
 }
