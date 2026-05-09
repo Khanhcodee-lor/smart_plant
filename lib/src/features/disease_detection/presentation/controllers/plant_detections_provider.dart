@@ -192,6 +192,7 @@ PlantDetectionsData _parseDetectionsFromCollection(
 
   for (final document in documents) {
     final normalized = Map<dynamic, dynamic>.from(document.data);
+    final sourceDocumentPath = document.path.trim();
     final detectedTime = _stringifyTime(
       _firstNonNull([
         normalized['annotated_frame_local_saved_at'],
@@ -228,6 +229,7 @@ PlantDetectionsData _parseDetectionsFromCollection(
       _detectionCandidateSources(normalized),
       fallbackTime: detectedTime,
       fallbackSnapshotUrl: snapshotUrl,
+      sourceDocumentPath: sourceDocumentPath,
     );
     if (nestedItems.isNotEmpty) {
       final normalizedItems = _normalizeDetectionList(nestedItems);
@@ -242,6 +244,7 @@ PlantDetectionsData _parseDetectionsFromCollection(
       normalized,
       fallbackTime: detectedTime,
       fallbackSnapshotUrl: snapshotUrl,
+      sourceDocumentPath: sourceDocumentPath,
     );
     if (directDetection != null) {
       history.add(directDetection);
@@ -372,6 +375,7 @@ List<DetectionItem> _extractFirstNonEmptyDetectionItemsFromCandidates(
   List<dynamic> sources, {
   String fallbackTime = '',
   String fallbackSnapshotUrl = '',
+  String sourceDocumentPath = '',
   int depth = 0,
 }) {
   for (final source in sources) {
@@ -379,6 +383,7 @@ List<DetectionItem> _extractFirstNonEmptyDetectionItemsFromCandidates(
       [source],
       fallbackTime: fallbackTime,
       fallbackSnapshotUrl: fallbackSnapshotUrl,
+      sourceDocumentPath: sourceDocumentPath,
       depth: depth,
     );
     if (items.isNotEmpty) {
@@ -393,6 +398,7 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
   List<dynamic> sources, {
   String fallbackTime = '',
   String fallbackSnapshotUrl = '',
+  String sourceDocumentPath = '',
   int depth = 0,
 }) {
   final history = <DetectionItem>[];
@@ -403,6 +409,7 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
         source,
         fallbackTime: fallbackTime,
         fallbackSnapshotUrl: fallbackSnapshotUrl,
+        sourceDocumentPath: sourceDocumentPath,
       );
       if (classItems.isNotEmpty) {
         history.addAll(classItems);
@@ -414,6 +421,7 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
           _asMap(item),
           fallbackTime: fallbackTime,
           fallbackSnapshotUrl: fallbackSnapshotUrl,
+          sourceDocumentPath: sourceDocumentPath,
           depth: depth + 1,
         );
         history.addAll(detections);
@@ -427,6 +435,7 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
           _asMap(source),
           fallbackTime: fallbackTime,
           fallbackSnapshotUrl: fallbackSnapshotUrl,
+          sourceDocumentPath: sourceDocumentPath,
           depth: depth + 1,
         ),
       );
@@ -440,6 +449,7 @@ List<DetectionItem> _extractDetectionItemsFromMap(
   Map<dynamic, dynamic> data, {
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  required String sourceDocumentPath,
   required int depth,
 }) {
   if (data.isEmpty || depth > 8) {
@@ -456,6 +466,7 @@ List<DetectionItem> _extractDetectionItemsFromMap(
     _detectionCandidateSources(data),
     fallbackTime: localTime,
     fallbackSnapshotUrl: localSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
     depth: depth + 1,
   );
   if (nestedItems.isNotEmpty) {
@@ -466,6 +477,7 @@ List<DetectionItem> _extractDetectionItemsFromMap(
     data,
     fallbackTime: localTime,
     fallbackSnapshotUrl: localSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
   );
   if (directDetection != null) {
     return <DetectionItem>[directDetection];
@@ -482,6 +494,7 @@ List<DetectionItem> _extractDetectionItemsFromMap(
         [value],
         fallbackTime: localTime,
         fallbackSnapshotUrl: localSnapshotUrl,
+        sourceDocumentPath: sourceDocumentPath,
         depth: depth + 1,
       ),
     );
@@ -494,6 +507,7 @@ DetectionItem? _toDetectionItem(
   Map<dynamic, dynamic> data, {
   String fallbackTime = '',
   String fallbackSnapshotUrl = '',
+  String sourceDocumentPath = '',
 }) {
   if (data.isEmpty) {
     return null;
@@ -570,6 +584,7 @@ DetectionItem? _toDetectionItem(
     confidence: confidence,
     time: time,
     snapshotUrl: snapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
   );
 }
 
@@ -604,6 +619,7 @@ List<DetectionItem> _extractDetectionItemsFromClassArray(
   List<dynamic> source, {
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  required String sourceDocumentPath,
 }) {
   final items = <DetectionItem>[];
 
@@ -623,6 +639,7 @@ List<DetectionItem> _extractDetectionItemsFromClassArray(
         confidence: 0,
         time: fallbackTime,
         snapshotUrl: fallbackSnapshotUrl,
+        sourceDocumentPath: sourceDocumentPath,
       ),
     );
   }
@@ -755,7 +772,12 @@ List<DetectionItem> _dedupeDetections(List<DetectionItem> items) {
       item.snapshotUrl,
     ].join('|');
 
-    deduped[key] = item;
+    final existing = deduped[key];
+    if (existing == null ||
+        (existing.sourceDocumentPath.trim().isEmpty &&
+            item.sourceDocumentPath.trim().isNotEmpty)) {
+      deduped[key] = item;
+    }
   }
 
   return deduped.values.toList();

@@ -21,6 +21,7 @@ mixin _$DetectionItem {
   double get confidence => throw _privateConstructorUsedError;
   String get time => throw _privateConstructorUsedError;
   String get snapshotUrl => throw _privateConstructorUsedError;
+  String get sourceDocumentPath => throw _privateConstructorUsedError;
 
   /// Create a copy of DetectionItem
   /// with the given fields replaced by the non-null parameter values.
@@ -41,6 +42,7 @@ abstract class $DetectionItemCopyWith<$Res> {
     double confidence,
     String time,
     String snapshotUrl,
+    String sourceDocumentPath,
   });
 }
 
@@ -63,6 +65,7 @@ class _$DetectionItemCopyWithImpl<$Res, $Val extends DetectionItem>
     Object? confidence = null,
     Object? time = null,
     Object? snapshotUrl = null,
+    Object? sourceDocumentPath = null,
   }) {
     return _then(
       _value.copyWith(
@@ -81,6 +84,10 @@ class _$DetectionItemCopyWithImpl<$Res, $Val extends DetectionItem>
             snapshotUrl: null == snapshotUrl
                 ? _value.snapshotUrl
                 : snapshotUrl // ignore: cast_nullable_to_non_nullable
+                      as String,
+            sourceDocumentPath: null == sourceDocumentPath
+                ? _value.sourceDocumentPath
+                : sourceDocumentPath // ignore: cast_nullable_to_non_nullable
                       as String,
           )
           as $Val,
@@ -102,6 +109,7 @@ abstract class _$$DetectionItemImplCopyWith<$Res>
     double confidence,
     String time,
     String snapshotUrl,
+    String sourceDocumentPath,
   });
 }
 
@@ -123,6 +131,7 @@ class __$$DetectionItemImplCopyWithImpl<$Res>
     Object? confidence = null,
     Object? time = null,
     Object? snapshotUrl = null,
+    Object? sourceDocumentPath = null,
   }) {
     return _then(
       _$DetectionItemImpl(
@@ -142,6 +151,10 @@ class __$$DetectionItemImplCopyWithImpl<$Res>
             ? _value.snapshotUrl
             : snapshotUrl // ignore: cast_nullable_to_non_nullable
                   as String,
+        sourceDocumentPath: null == sourceDocumentPath
+            ? _value.sourceDocumentPath
+            : sourceDocumentPath // ignore: cast_nullable_to_non_nullable
+                  as String,
       ),
     );
   }
@@ -155,6 +168,7 @@ class _$DetectionItemImpl implements _DetectionItem {
     required this.confidence,
     required this.time,
     this.snapshotUrl = '',
+    this.sourceDocumentPath = '',
   });
 
   @override
@@ -166,10 +180,13 @@ class _$DetectionItemImpl implements _DetectionItem {
   @override
   @JsonKey()
   final String snapshotUrl;
+  @override
+  @JsonKey()
+  final String sourceDocumentPath;
 
   @override
   String toString() {
-    return 'DetectionItem(diseaseClass: $diseaseClass, confidence: $confidence, time: $time, snapshotUrl: $snapshotUrl)';
+    return 'DetectionItem(diseaseClass: $diseaseClass, confidence: $confidence, time: $time, snapshotUrl: $snapshotUrl, sourceDocumentPath: $sourceDocumentPath)';
   }
 
   @override
@@ -183,12 +200,20 @@ class _$DetectionItemImpl implements _DetectionItem {
                 other.confidence == confidence) &&
             (identical(other.time, time) || other.time == time) &&
             (identical(other.snapshotUrl, snapshotUrl) ||
-                other.snapshotUrl == snapshotUrl));
+                other.snapshotUrl == snapshotUrl) &&
+            (identical(other.sourceDocumentPath, sourceDocumentPath) ||
+                other.sourceDocumentPath == sourceDocumentPath));
   }
 
   @override
-  int get hashCode =>
-      Object.hash(runtimeType, diseaseClass, confidence, time, snapshotUrl);
+  int get hashCode => Object.hash(
+    runtimeType,
+    diseaseClass,
+    confidence,
+    time,
+    snapshotUrl,
+    sourceDocumentPath,
+  );
 
   /// Create a copy of DetectionItem
   /// with the given fields replaced by the non-null parameter values.
@@ -205,6 +230,7 @@ abstract class _DetectionItem implements DetectionItem {
     required final double confidence,
     required final String time,
     final String snapshotUrl,
+    final String sourceDocumentPath,
   }) = _$DetectionItemImpl;
 
   @override
@@ -215,6 +241,8 @@ abstract class _DetectionItem implements DetectionItem {
   String get time;
   @override
   String get snapshotUrl;
+  @override
+  String get sourceDocumentPath;
 
   /// Create a copy of DetectionItem
   /// with the given fields replaced by the non-null parameter values.

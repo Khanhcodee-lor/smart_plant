@@ -4,10 +4,15 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'firebase_firestore_service.g.dart';
 
 class FirestoreDocumentData {
-  const FirestoreDocumentData({required this.id, required this.data});
+  const FirestoreDocumentData({
+    required this.id,
+    required this.data,
+    this.path = '',
+  });
 
   final String id;
   final Map<String, dynamic> data;
+  final String path;
 }
 
 class FirebaseFirestoreService {
@@ -24,7 +29,13 @@ class FirebaseFirestoreService {
   Stream<List<FirestoreDocumentData>> collectionStreamWithIds(String path) {
     return _db.collection(path).snapshots().map((snapshot) {
       return snapshot.docs
-          .map((doc) => FirestoreDocumentData(id: doc.id, data: doc.data()))
+          .map(
+            (doc) => FirestoreDocumentData(
+              id: doc.id,
+              data: doc.data(),
+              path: doc.reference.path,
+            ),
+          )
           .toList();
     });
   }

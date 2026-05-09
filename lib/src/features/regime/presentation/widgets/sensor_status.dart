@@ -1,6 +1,6 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
-import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
+import 'package:app_iot/src/features/regime/presentation/controllers/regime_realtime_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -8,19 +8,16 @@ import 'package:go_router/go_router.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 
 class SensorStatus extends ConsumerWidget {
-  const SensorStatus({super.key});
+  const SensorStatus({super.key, required this.plantId});
+
+  final String plantId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final plantAsyncValue = ref.watch(plantControllerProvider);
+    final realtimeAsyncValue = ref.watch(regimeRealtimeDataProvider(plantId));
 
-    return plantAsyncValue.when(
-      data: (plants) {
-        if (plants.isEmpty) {
-          return const SizedBox.shrink(); // Hide if no data
-        }
-        final plant = plants.first;
-
+    return realtimeAsyncValue.when(
+      data: (data) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -36,18 +33,18 @@ class SensorStatus extends ConsumerWidget {
                 Expanded(
                   child: _buildTemperatureCard(
                     context,
-                    plant.temperature,
-                    plant.id,
+                    data.temperature,
+                    plantId,
                   ),
                 ),
                 SizedBox(width: 12.w),
                 Expanded(
-                  child: _buildHumidityCard(context, plant.humidity, plant.id),
+                  child: _buildHumidityCard(context, data.humidity, plantId),
                 ),
               ],
             ),
             SizedBox(height: 12.h),
-            _buildSoilMoistureCard(context, plant.soilMoisture, plant.id),
+            _buildSoilMoistureCard(context, data.soilMoisture, plantId),
           ],
         );
       },

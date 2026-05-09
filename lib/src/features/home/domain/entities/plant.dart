@@ -9,6 +9,7 @@ class DetectionItem with _$DetectionItem {
     required double confidence,
     required String time,
     @Default('') String snapshotUrl,
+    @Default('') String sourceDocumentPath,
   }) = _DetectionItem;
 }
 

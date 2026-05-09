@@ -30,6 +30,7 @@ void main() {
     final parsed = debugParsePlantDetectionsCollection([
       const FirestoreDocumentData(
         id: 'DBt0mU8Lh6tN47Ga3kZv',
+        path: 'plants/tomato/detections/DBt0mU8Lh6tN47Ga3kZv',
         data: detectionPayload,
       ),
     ]);
@@ -42,6 +43,10 @@ void main() {
     expect(
       parsed.latestDetection?.snapshotUrl,
       'detections/20260419_115826_579585.jpg',
+    );
+    expect(
+      parsed.latestDetection?.sourceDocumentPath,
+      'plants/tomato/detections/DBt0mU8Lh6tN47Ga3kZv',
     );
     expect(parsed.latestDetections.map((item) => item.diseaseClass), [
       'Lá cà chua bệnh mốc sương',

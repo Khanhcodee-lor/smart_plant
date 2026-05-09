@@ -27,20 +27,30 @@ class FirebaseRealtimeDatabaseService {
   final FirebaseAuth _auth;
   final FirebaseApp _app;
 
+  Future<dynamic> getData(String path) async {
+    final uri = await _buildUri(path);
+    final response = await _client.get(uri);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw FirebaseRealtimeDatabaseException(
+        'Realtime Database request failed '
+        '(${response.statusCode}): ${response.body}',
+      );
+    }
+
+    if (response.body.trim().isEmpty || response.body.trim() == 'null') {
+      return null;
+    }
+
+    return jsonDecode(response.body);
+  }
+
   Future<void> updateData(String path, Map<String, dynamic> data) async {
-    await _sendRequest(
-      method: 'PATCH',
-      path: path,
-      body: jsonEncode(data),
-    );
+    await _sendRequest(method: 'PATCH', path: path, body: jsonEncode(data));
   }
 
   Future<void> setData(String path, Object? data) async {
-    await _sendRequest(
-      method: 'PUT',
-      path: path,
-      body: jsonEncode(data),
-    );
+    await _sendRequest(method: 'PUT', path: path, body: jsonEncode(data));
   }
 
   Future<void> _sendRequest({
@@ -98,10 +108,7 @@ class FirebaseRealtimeDatabaseService {
     final token = await _auth.currentUser?.getIdToken();
     if (token != null && token.isNotEmpty) {
       uri = uri.replace(
-        queryParameters: {
-          ...uri.queryParameters,
-          'auth': token,
-        },
+        queryParameters: {...uri.queryParameters, 'auth': token},
       );
     }
 

@@ -1,5 +1,6 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
+import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
@@ -162,13 +163,23 @@ class CaptureHistoryListWidget extends StatelessWidget {
   }
 }
 
-class _CaptureHistoryDetailSheet extends ConsumerWidget {
+class _CaptureHistoryDetailSheet extends ConsumerStatefulWidget {
   final DetectionItem item;
 
   const _CaptureHistoryDetailSheet({required this.item});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CaptureHistoryDetailSheet> createState() =>
+      _CaptureHistoryDetailSheetState();
+}
+
+class _CaptureHistoryDetailSheetState
+    extends ConsumerState<_CaptureHistoryDetailSheet> {
+  bool _isDeleting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
     final snapshotPath = item.snapshotUrl.trim();
     final snapshotAsync = snapshotPath.isEmpty
         ? const AsyncValue<String>.data('')
@@ -270,8 +281,9 @@ class _CaptureHistoryDetailSheet extends ConsumerWidget {
                             : Icons.bug_report_outlined,
                         label: 'Bệnh phát hiện',
                         value: diseaseLabel,
-                        accentColor:
-                            isHealthy ? Colors.green : AppColors.warning,
+                        accentColor: isHealthy
+                            ? Colors.green
+                            : AppColors.warning,
                       ),
                       SizedBox(height: 12.h),
                       _HistoryInfoRow(
@@ -293,11 +305,85 @@ class _CaptureHistoryDetailSheet extends ConsumerWidget {
                   ),
                 ),
               ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 16.h),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48.h,
+                  child: ElevatedButton.icon(
+                    onPressed: _isDeleting ? null : _handleDeletePressed,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: AppColors.disabled,
+                      disabledForegroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                    ),
+                    icon: _isDeleting
+                        ? SizedBox(
+                            width: 18.w,
+                            height: 18.w,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(Icons.delete_outline, size: 20.sp),
+                    label: Text(_isDeleting ? 'Đang xóa...' : 'Xóa lần chụp'),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _handleDeletePressed() async {
+    final documentPath = widget.item.sourceDocumentPath.trim();
+    if (documentPath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không tìm thấy đường dẫn Firebase để xóa'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isDeleting = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    try {
+      await ref.read(firebaseFirestoreServiceProvider).deleteData(documentPath);
+      if (!mounted) {
+        return;
+      }
+
+      navigator.pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Đã xóa lần chụp khỏi Firebase')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(SnackBar(content: Text('Xóa thất bại: $error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+        });
+      }
+    }
   }
 }
 
@@ -335,10 +421,7 @@ class _HistoryInfoRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              label.bodyCustom(
-                size: 12.sp,
-                color: AppColors.disabledText,
-              ),
+              label.bodyCustom(size: 12.sp, color: AppColors.disabledText),
               SizedBox(height: 4.h),
               value.bodyCustom(
                 size: 14.sp,
