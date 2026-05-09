@@ -1,6 +1,7 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.dart';
+import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
@@ -306,6 +307,26 @@ class _CaptureHistoryDetailSheetState
                 ),
               ),
               Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 0),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48.h,
+                  child: ElevatedButton.icon(
+                    onPressed: _handleAiAnalyzePressed,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                    ),
+                    icon: Icon(Icons.auto_awesome, size: 20.sp),
+                    label: const Text('AI phân tích & khắc phục'),
+                  ),
+                ),
+              ),
+              Padding(
                 padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 16.h),
                 child: SizedBox(
                   width: double.infinity,
@@ -340,6 +361,44 @@ class _CaptureHistoryDetailSheetState
           ),
         ),
       ),
+    );
+  }
+
+  void _handleAiAnalyzePressed() {
+    final item = widget.item;
+    final diseaseLabel = translateDiseaseLabel(item.diseaseClass);
+    final confidence = item.confidence > 0
+        ? '${(item.confidence * 100).toStringAsFixed(1)}%'
+        : 'Chưa có dữ liệu';
+    final capturedAt = item.time.trim().isEmpty
+        ? 'Chưa có thời gian'
+        : item.time.trim();
+    final snapshotPath = item.snapshotUrl.trim();
+    final prompt =
+        '''
+Bạn là trợ lý nông nghiệp cho ứng dụng IoT trồng cây. Hãy phân tích lần chụp bệnh cây này và đưa ra hướng khắc phục thực tế bằng tiếng Việt.
+
+Dữ liệu phát hiện:
+- Bệnh/triệu chứng: $diseaseLabel
+- Nhãn gốc AI: ${item.diseaseClass}
+- Độ tin cậy: $confidence
+- Thời gian chụp: $capturedAt
+- Có ảnh lưu: ${snapshotPath.isEmpty ? 'Không' : 'Có'}
+
+Yêu cầu trả lời ngắn gọn theo các mục:
+1. Nhận định mức độ bệnh.
+2. Việc cần làm ngay.
+3. Cách xử lý/khắc phục trong vài ngày tới.
+4. Phòng ngừa tái phát.
+5. Lưu ý an toàn nếu dùng thuốc hoặc chế phẩm sinh học.
+''';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          AiChatbotSheet(initialMessage: prompt, autoSendInitialMessage: true),
     );
   }
 

@@ -6,7 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class AiChatbotSheet extends ConsumerStatefulWidget {
-  const AiChatbotSheet({super.key});
+  final String? initialMessage;
+  final bool autoSendInitialMessage;
+
+  const AiChatbotSheet({
+    super.key,
+    this.initialMessage,
+    this.autoSendInitialMessage = false,
+  });
 
   @override
   ConsumerState<AiChatbotSheet> createState() => _AiChatbotSheetState();
@@ -15,6 +22,31 @@ class AiChatbotSheet extends ConsumerStatefulWidget {
 class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    final initialMessage = widget.initialMessage?.trim();
+    if (initialMessage == null || initialMessage.isEmpty) {
+      return;
+    }
+
+    if (widget.autoSendInitialMessage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+
+        ref
+            .read(chatbotControllerProvider.notifier)
+            .sendMessage(initialMessage);
+        _scrollToBottom();
+      });
+    } else {
+      _textController.text = initialMessage;
+    }
+  }
 
   // Hàm cuộn xuống cuối cùng khi có tin nhắn mới
   void _scrollToBottom() {
@@ -48,6 +80,12 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
   @override
   Widget build(BuildContext context) {
     final sheetHeight = MediaQuery.of(context).size.height * 0.92;
+    ref.listen<ChatState>(chatbotControllerProvider, (previous, next) {
+      if (previous?.messages.length != next.messages.length ||
+          previous?.isLoading != next.isLoading) {
+        _scrollToBottom();
+      }
+    });
     // Lắng nghe trạng thái Chat từ Provider
     final chatState = ref.watch(chatbotControllerProvider);
 

@@ -1,15 +1,14 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
+import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
+import 'package:app_iot/src/features/regime/presentation/controllers/regime_realtime_controller.dart';
+import 'package:app_iot/src/features/regime/presentation/widgets/environmental_metric_detail.dart';
+import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:app_iot/src/features/regime/presentation/widgets/environmental_chart_card.dart';
-import 'package:app_iot/src/shared/animations/animated_globe.dart';
-
-import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
-import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 
 class HumidityDetailScreen extends BaseView {
   final String plantId;
@@ -52,23 +51,38 @@ class HumidityDetailScreen extends BaseView {
   @override
   Widget buildBody(BuildContext context, WidgetRef ref) {
     final plantAsyncValue = ref.watch(plantControllerProvider);
+    final realtimeAsyncValue = ref.watch(regimeRealtimeDataProvider(plantId));
 
     return SizedBox.expand(
       child: AppRefreshScrollView(
+        padding: EdgeInsets.fromLTRB(0, 68.h, 0, 24.h),
         onRefresh: () async {
-          return await ref.refresh(plantControllerProvider.future);
+          ref.invalidate(plantControllerProvider);
+          ref.invalidate(regimeRealtimeDataProvider(plantId));
+
+          await Future.wait([
+            ref.read(plantControllerProvider.future),
+            ref
+                .read(regimeRealtimeDataProvider(plantId).future)
+                .then<void>((_) {})
+                .catchError((_) {}),
+          ]);
         },
         child: plantAsyncValue.when(
           data: (plants) {
             final plantIndex = plants.indexWhere((p) => p.id == plantId);
             if (plantIndex == -1) {
-              return Center(
-                child: Text('Không tìm thấy dữ liệu cây ($plantId)'),
+              return SizedBox(
+                height: MediaQuery.sizeOf(context).height * 0.62,
+                child: Center(
+                  child: Text('Không tìm thấy dữ liệu cây ($plantId)'),
+                ),
               );
             }
             final plant = plants[plantIndex];
 
-            final currentHumidity = plant.humidity;
+            final currentHumidity =
+                realtimeAsyncValue.asData?.value.humidity ?? plant.humidity;
             final sensorHistory = plant.sensorHistory;
             final List<FlSpot> chartSpots = [];
             final List<String> xLabels = [];
@@ -87,33 +101,32 @@ class HumidityDetailScreen extends BaseView {
             );
             xLabels.add('NOW');
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(vertical: 20.h),
-              child: Column(
-                children: [
-                  // Animated Circular Humidity Layout
-                  AnimatedGlobe(
-                    val: currentHumidity.toStringAsFixed(1),
-                    unit: "%",
-                    subtitle: "Độ ẩm",
-                    baseColor: const Color(0xFFE3F2FD),
-                    shadowColor: const Color(0xFFBBDEFB),
-                    textColor: const Color(0xFF1565C0),
-                  ),
-                  SizedBox(height: 40.h),
-                  EnvironmentalChartCard(
-                    title: "Biểu đồ độ ẩm",
-                    chartColor: const Color(0xFF42A5F5),
-                    spots: chartSpots,
-                    xLabels: xLabels,
-                    unit: "%",
-                  ),
-                ],
-              ),
+            return EnvironmentalMetricDetail(
+              metricName: 'Độ ẩm',
+              chartTitle: 'Biểu đồ độ ẩm',
+              currentValue: currentHumidity,
+              heroUnit: '%',
+              chartUnit: '%',
+              fractionDigits: 0,
+              icon: Icons.water_drop_rounded,
+              accentColor: const Color(0xFF3F8DF6),
+              baseColor: const Color(0xFFE7F5FF),
+              shadowColor: const Color(0xFFB9E3FF),
+              textColor: const Color(0xFF163D84),
+              idealMin: 55,
+              idealMax: 80,
+              spots: chartSpots,
+              xLabels: xLabels,
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
+          loading: () => SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.62,
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, _) => SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.62,
+            child: Center(child: Text('Lỗi tải dữ liệu: $error')),
+          ),
         ),
       ),
     );

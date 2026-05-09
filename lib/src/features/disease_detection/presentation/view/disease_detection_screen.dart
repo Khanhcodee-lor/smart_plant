@@ -3,6 +3,7 @@ import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
 import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_command_controller.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/controllers/disease_image_upload_controller.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/plant_detections_provider.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/capture_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/current_disease_card_widget.dart';
@@ -14,6 +15,7 @@ import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:image_picker/image_picker.dart';
 
 class DiseaseDetectionScreen extends BaseView {
   final String plantId;
@@ -24,7 +26,8 @@ class DiseaseDetectionScreen extends BaseView {
   bool extendBodyBehindAppBar() => true;
 
   @override
-  Widget? buildFloatingActionButton(BuildContext context, WidgetRef ref) => null;
+  Widget? buildFloatingActionButton(BuildContext context, WidgetRef ref) =>
+      null;
 
   @override
   AppBar? buildAppBar(BuildContext context, WidgetRef ref) {
@@ -38,17 +41,19 @@ class DiseaseDetectionScreen extends BaseView {
         fontWeight: FontWeight.w600,
       ),
       centerTitle: true,
-      title: ref.watch(plantControllerProvider).when(
-        data: (plants) {
-          final plant = _resolvePlantForScreen(plants, plantId);
-          if (plant == null) {
-            return const Text('Không tìm thấy dữ liệu cây');
-          }
-          return Text(plant.name);
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
-      ),
+      title: ref
+          .watch(plantControllerProvider)
+          .when(
+            data: (plants) {
+              final plant = _resolvePlantForScreen(plants, plantId);
+              if (plant == null) {
+                return const Text('Không tìm thấy dữ liệu cây');
+              }
+              return Text(plant.name);
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
+          ),
     );
   }
 
@@ -97,7 +102,8 @@ class DiseaseDetectionScreen extends BaseView {
                     );
                   }
 
-                  final firestoreDetections = detectionsAsyncValue.asData?.value;
+                  final firestoreDetections =
+                      detectionsAsyncValue.asData?.value;
                   final latestDetection =
                       firestoreDetections?.latestDetection ??
                       plant.latestDetection;
@@ -106,13 +112,17 @@ class DiseaseDetectionScreen extends BaseView {
                       ? firestoreDetections!.history
                       : plant.history;
                   final latestDetections =
-                      (firestoreDetections?.latestDetections.isNotEmpty ?? false)
+                      (firestoreDetections?.latestDetections.isNotEmpty ??
+                          false)
                       ? firestoreDetections!.latestDetections
                       : (latestDetection != null
                             ? <DetectionItem>[latestDetection]
                             : history.take(1).toList());
                   final latestSnapshotUrl =
-                      _firstNonEmptySnapshot([...latestDetections, ...history]) ??
+                      _firstNonEmptySnapshot([
+                        ...latestDetections,
+                        ...history,
+                      ]) ??
                       firestoreDetections?.latestSnapshotUrl.trim() ??
                       latestDetection?.snapshotUrl.trim() ??
                       '';
@@ -172,6 +182,8 @@ class DiseaseDetectionScreen extends BaseView {
             child: _BottomActionButtons(
               plantId: plantId,
               onCapturePressed: () => _handleCapturePressed(context, ref),
+              onPhoneImagePressed: () =>
+                  _showPhoneImageSourcePicker(context, ref),
               onAiPressed: () => _showAiAssistant(context),
             ),
           ),
@@ -189,6 +201,117 @@ class DiseaseDetectionScreen extends BaseView {
     );
   }
 
+  void _showPhoneImageSourcePicker(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Container(
+            margin: EdgeInsets.all(16.r),
+            padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 10.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24.r),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                'Gửi ảnh lên server'.h1Custom(
+                  size: 17.sp,
+                  color: AppColors.textMain,
+                ),
+                SizedBox(height: 6.h),
+                'Chụp ảnh mới hoặc chọn ảnh từ thư viện để gửi qua API.'
+                    .bodyCustom(size: 12.sp, color: AppColors.textSecondary),
+                SizedBox(height: 14.h),
+                _ImageSourceTile(
+                  icon: Icons.photo_camera_outlined,
+                  title: 'Chụp bằng camera điện thoại',
+                  subtitle: 'Mở camera, chụp ảnh cây rồi gửi server',
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _pickAndUploadImage(context, ref, ImageSource.camera);
+                  },
+                ),
+                SizedBox(height: 8.h),
+                _ImageSourceTile(
+                  icon: Icons.photo_library_outlined,
+                  title: 'Chọn từ thư viện ảnh',
+                  subtitle: 'Lấy ảnh có sẵn trong máy rồi gửi server',
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _pickAndUploadImage(context, ref, ImageSource.gallery);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickAndUploadImage(
+    BuildContext context,
+    WidgetRef ref,
+    ImageSource source,
+  ) async {
+    final inFlight = ref.read(
+      diseaseImageUploadInFlightProvider(plantId).notifier,
+    );
+    if (inFlight.state) {
+      return;
+    }
+
+    final image = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 88,
+      maxWidth: 1600,
+    );
+    if (image == null) {
+      return;
+    }
+    if (!context.mounted) {
+      return;
+    }
+
+    inFlight.state = true;
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await ref
+          .read(diseaseImageUploadServiceProvider)
+          .uploadImage(plantId: plantId, image: image);
+      if (!context.mounted) {
+        return;
+      }
+
+      ref.invalidate(plantDetectionsProvider(plantId));
+      ref.invalidate(plantControllerProvider);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Đã gửi ảnh lên server để phân tích')),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      inFlight.state = false;
+    }
+  }
+
   Future<void> _handleCapturePressed(
     BuildContext context,
     WidgetRef ref,
@@ -202,7 +325,9 @@ class DiseaseDetectionScreen extends BaseView {
 
     inFlight.state = true;
     try {
-      await ref.read(plantCaptureCommandServiceProvider).requestCapture(plantId);
+      await ref
+          .read(plantCaptureCommandServiceProvider)
+          .requestCapture(plantId);
       if (!context.mounted) {
         return;
       }
@@ -215,23 +340,91 @@ class DiseaseDetectionScreen extends BaseView {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gửi lệnh chụp thất bại: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gửi lệnh chụp thất bại: $error')));
     } finally {
       inFlight.state = false;
     }
   }
 }
 
+class _ImageSourceTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ImageSourceTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.backgroundGreen.withOpacity(0.72),
+      borderRadius: BorderRadius.circular(18.r),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18.r),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 13.h),
+          child: Row(
+            children: [
+              Container(
+                width: 44.w,
+                height: 44.w,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14.r),
+                ),
+                child: Icon(icon, color: AppColors.accent, size: 22.sp),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    title.bodyCustom(
+                      size: 14.sp,
+                      color: AppColors.textMain,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    SizedBox(height: 3.h),
+                    subtitle.bodyCustom(
+                      size: 12.sp,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: AppColors.disabledText,
+                size: 14.sp,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _BottomActionButtons extends ConsumerWidget {
   final String plantId;
   final VoidCallback onCapturePressed;
+  final VoidCallback onPhoneImagePressed;
   final VoidCallback onAiPressed;
 
   const _BottomActionButtons({
     required this.plantId,
     required this.onCapturePressed,
+    required this.onPhoneImagePressed,
     required this.onAiPressed,
   });
 
@@ -239,6 +432,9 @@ class _BottomActionButtons extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isSendingCapture = ref.watch(
       plantCaptureCommandInFlightProvider(plantId),
+    );
+    final isUploadingImage = ref.watch(
+      diseaseImageUploadInFlightProvider(plantId),
     );
 
     return Padding(
@@ -248,6 +444,30 @@ class _BottomActionButtons extends ConsumerWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FloatingActionButton(
+                heroTag: 'phone_image_$plantId',
+                tooltip: 'Chụp hoặc chọn ảnh',
+                backgroundColor: AppColors.primary,
+                elevation: 4,
+                onPressed: isUploadingImage ? null : onPhoneImagePressed,
+                child: isUploadingImage
+                    ? SizedBox(
+                        width: 24.w,
+                        height: 24.w,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: Colors.white,
+                        size: 24.sp,
+                      ),
+              ),
+            ),
             Align(
               alignment: Alignment.center,
               child: FloatingActionButton(

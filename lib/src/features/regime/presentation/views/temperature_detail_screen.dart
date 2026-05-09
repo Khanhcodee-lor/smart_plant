@@ -1,14 +1,14 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
+import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
+import 'package:app_iot/src/features/regime/presentation/controllers/regime_realtime_controller.dart';
+import 'package:app_iot/src/features/regime/presentation/widgets/environmental_metric_detail.dart';
+import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:app_iot/src/features/regime/presentation/widgets/environmental_chart_card.dart';
-import 'package:app_iot/src/shared/animations/animated_globe.dart';
-import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
-import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 
 class TemperatureDetailScreen extends BaseView {
   final String plantId;
@@ -51,23 +51,39 @@ class TemperatureDetailScreen extends BaseView {
   @override
   Widget buildBody(BuildContext context, WidgetRef ref) {
     final plantAsyncValue = ref.watch(plantControllerProvider);
+    final realtimeAsyncValue = ref.watch(regimeRealtimeDataProvider(plantId));
 
     return SizedBox.expand(
       child: AppRefreshScrollView(
+        padding: EdgeInsets.fromLTRB(0, 68.h, 0, 24.h),
         onRefresh: () async {
-          return await ref.refresh(plantControllerProvider.future);
+          ref.invalidate(plantControllerProvider);
+          ref.invalidate(regimeRealtimeDataProvider(plantId));
+
+          await Future.wait([
+            ref.read(plantControllerProvider.future),
+            ref
+                .read(regimeRealtimeDataProvider(plantId).future)
+                .then<void>((_) {})
+                .catchError((_) {}),
+          ]);
         },
         child: plantAsyncValue.when(
           data: (plants) {
             final plantIndex = plants.indexWhere((p) => p.id == plantId);
             if (plantIndex == -1) {
-              return Center(
-                child: Text('Không tìm thấy dữ liệu cây ($plantId)'),
+              return SizedBox(
+                height: MediaQuery.sizeOf(context).height * 0.62,
+                child: Center(
+                  child: Text('Không tìm thấy dữ liệu cây ($plantId)'),
+                ),
               );
             }
             final plant = plants[plantIndex];
 
-            final currentTemp = plant.temperature;
+            final currentTemp =
+                realtimeAsyncValue.asData?.value.temperature ??
+                plant.temperature;
             final sensorHistory = plant.sensorHistory;
             final List<FlSpot> chartSpots = [];
             final List<String> xLabels = [];
@@ -89,33 +105,32 @@ class TemperatureDetailScreen extends BaseView {
             );
             xLabels.add('NOW');
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(vertical: 20.h),
-              child: Column(
-                children: [
-                  // Animated Circular Temperature Layout
-                  AnimatedGlobe(
-                    val: currentTemp.toStringAsFixed(1),
-                    unit: "°",
-                    subtitle: "Nhiệt độ",
-                    baseColor: const Color(0xFFFDECD8),
-                    shadowColor: const Color(0xFFFCE1C6),
-                    textColor: const Color(0xFF1B233A),
-                  ),
-                  SizedBox(height: 40.h),
-                  EnvironmentalChartCard(
-                    title: "Biểu đồ nhiệt độ",
-                    chartColor: const Color(0xFFFF7043),
-                    spots: chartSpots,
-                    xLabels: xLabels,
-                    unit: "°C",
-                  ),
-                ],
-              ),
+            return EnvironmentalMetricDetail(
+              metricName: 'Nhiệt độ',
+              chartTitle: 'Biểu đồ nhiệt độ',
+              currentValue: currentTemp,
+              heroUnit: '°C',
+              chartUnit: '°C',
+              fractionDigits: 1,
+              icon: Icons.thermostat_rounded,
+              accentColor: const Color(0xFFFF7043),
+              baseColor: const Color(0xFFFFF0DF),
+              shadowColor: const Color(0xFFFFD2B6),
+              textColor: const Color(0xFF17203A),
+              idealMin: 20,
+              idealMax: 32,
+              spots: chartSpots,
+              xLabels: xLabels,
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
+          loading: () => SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.62,
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, _) => SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.62,
+            child: Center(child: Text('Lỗi tải dữ liệu: $error')),
+          ),
         ),
       ),
     );
