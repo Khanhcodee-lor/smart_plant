@@ -383,6 +383,10 @@ DetectionItem? _buildDetectionItem(Map<dynamic, dynamic> value) {
   );
   final snapshotUrl =
       _firstNonEmptyString([
+        value['annotated_frame_storage_path'],
+        value['frame_storage_path'],
+        value['annotatedFrameStoragePath'],
+        value['snapshot_path'],
         value['annotated_frame_url'],
         value['frame_url'],
         value['annotatedFrameUrl'],

@@ -116,6 +116,53 @@ void main() {
     },
   );
 
+  test('merge detections by path drops data from cleared paths', () {
+    final firstPath = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'old',
+        path: 'plants/tomato/detections/old',
+        data: {
+          'class': 'Tomato leaf early blight',
+          'confidence': 0.7,
+          'timestamp': '2026-04-19T10:00:00.000000',
+        },
+      ),
+    ]);
+    final secondPath = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'new',
+        path: 'plants/tomato/detections/new',
+        data: {
+          'class': 'Tomato leaf late blight',
+          'confidence': 0.8,
+          'timestamp': '2026-04-19T11:00:00.000000',
+        },
+      ),
+    ]);
+
+    final merged = debugMergePlantDetectionsByPath({
+      'plants/tomato/detections/old': firstPath,
+      'plants/tomato/detections/new': secondPath,
+    });
+    final afterOldPathCleared = debugMergePlantDetectionsByPath({
+      'plants/tomato/detections/old': const PlantDetectionsData(),
+      'plants/tomato/detections/new': secondPath,
+    });
+
+    expect(
+      merged.history.map((item) => item.diseaseClass),
+      contains('Tomato leaf early blight'),
+    );
+    expect(
+      afterOldPathCleared.history.map((item) => item.diseaseClass),
+      isNot(contains('Tomato leaf early blight')),
+    );
+    expect(
+      afterOldPathCleared.latestDetection?.diseaseClass,
+      'Tomato leaf late blight',
+    );
+  });
+
   test('parse Firestore collection document nested under data field', () {
     final parsed = debugParsePlantDetectionsCollection([
       const FirestoreDocumentData(

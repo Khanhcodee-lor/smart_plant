@@ -26,10 +26,20 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final normalizedPath = snapshotUrl.trim();
-    final snapshotAsync = normalizedPath.isEmpty
-        ? const AsyncValue<String>.data('')
-        : ref.watch(latestSnapshotUrlProvider(normalizedPath));
-    final resolvedSnapshotUrl = snapshotAsync.asData?.value.trim() ?? '';
+    final shouldResolveSnapshot =
+        normalizedPath.isNotEmpty &&
+        !isLocalSnapshotImagePath(normalizedPath) &&
+        !isInlineSnapshotImageData(normalizedPath);
+    final snapshotAsync = shouldResolveSnapshot
+        ? ref.watch(latestSnapshotUrlProvider(normalizedPath))
+        : const AsyncValue<String>.data('');
+    final effectiveSnapshotAsync = shouldResolveSnapshot
+        ? snapshotAsync
+        : (normalizedPath.isEmpty
+              ? const AsyncValue<String>.data('')
+              : AsyncValue<String>.data(normalizedPath));
+    final resolvedSnapshotUrl =
+        effectiveSnapshotAsync.asData?.value.trim() ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,7 +86,7 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                snapshotAsync.when(
+                effectiveSnapshotAsync.when(
                   data: (resolvedUrl) {
                     if (resolvedUrl.isEmpty) {
                       return const _SnapshotPlaceholder(
@@ -85,21 +95,17 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
                       );
                     }
 
-                    return Image.network(
-                      resolvedUrl,
+                    return SnapshotImage(
+                      imageUrl: resolvedUrl,
                       fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) {
-                          return child;
-                        }
-
+                      loadingBuilder: (context) {
                         return const _SnapshotPlaceholder(
                           icon: Icons.image_search_outlined,
                           message: 'Đang tải ảnh chụp...',
                           showLoader: true,
                         );
                       },
-                      errorBuilder: (context, error, stackTrace) {
+                      errorBuilder: (context) {
                         return const _SnapshotPlaceholder(
                           icon: Icons.broken_image_outlined,
                           message: 'Không tải được ảnh chụp',

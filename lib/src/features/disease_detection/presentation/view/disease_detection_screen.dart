@@ -7,6 +7,7 @@ import 'package:app_iot/src/features/disease_detection/presentation/controllers/
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/plant_detections_provider.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/capture_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/current_disease_card_widget.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_feedback_snack_bar.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
@@ -78,6 +79,9 @@ class DiseaseDetectionScreen extends BaseView {
   Widget buildBody(BuildContext context, WidgetRef ref) {
     final plantAsyncValue = ref.watch(plantControllerProvider);
     final detectionsAsyncValue = ref.watch(plantDetectionsProvider(plantId));
+    final uploadedImageResult = ref.watch(
+      diseaseImageUploadLatestResultProvider(plantId),
+    );
 
     return SizedBox.expand(
       child: Stack(
@@ -104,24 +108,21 @@ class DiseaseDetectionScreen extends BaseView {
 
                   final firestoreDetections =
                       detectionsAsyncValue.asData?.value;
-                  final latestDetection =
+                  var latestDetection =
                       firestoreDetections?.latestDetection ??
                       plant.latestDetection;
-                  final history =
+                  var history =
                       (firestoreDetections?.history.isNotEmpty ?? false)
                       ? firestoreDetections!.history
                       : plant.history;
-                  final latestDetections =
+                  var latestDetections =
                       (firestoreDetections?.latestDetections.isNotEmpty ??
                           false)
                       ? firestoreDetections!.latestDetections
                       : (latestDetection != null
                             ? <DetectionItem>[latestDetection]
                             : history.take(1).toList());
-                  final uniqueLatestDetections = _uniqueDetectionsByDisease(
-                    latestDetections,
-                  );
-                  final latestSnapshotUrl =
+                  var latestSnapshotUrl =
                       _firstNonEmptySnapshot([
                         ...latestDetections,
                         ...history,
@@ -129,11 +130,36 @@ class DiseaseDetectionScreen extends BaseView {
                       firestoreDetections?.latestSnapshotUrl.trim() ??
                       latestDetection?.snapshotUrl.trim() ??
                       '';
-                  final latestCapturedAt =
+                  var latestCapturedAt =
                       _firstNonEmptyTime([...latestDetections, ...history]) ??
                       firestoreDetections?.latestCapturedAt.trim() ??
                       latestDetection?.time.trim() ??
                       '';
+                  if (_shouldUseUploadedImageResult(
+                    uploadedImageResult,
+                    latestSnapshotUrl,
+                    latestCapturedAt,
+                  )) {
+                    final uploadDetections = uploadedImageResult!.detections;
+                    latestSnapshotUrl =
+                        uploadedImageResult.snapshotUrl.trim().isNotEmpty
+                        ? uploadedImageResult.snapshotUrl.trim()
+                        : '';
+                    latestCapturedAt =
+                        uploadedImageResult.capturedAt.trim().isNotEmpty
+                        ? uploadedImageResult.capturedAt.trim()
+                        : latestCapturedAt;
+                    latestDetection = uploadedImageResult.latestDetection;
+                    latestDetections = uploadDetections;
+                    history = [
+                      if (uploadedImageResult.latestDetection != null)
+                        uploadedImageResult.latestDetection!,
+                      ...history,
+                    ];
+                  }
+                  final uniqueLatestDetections = _uniqueDetectionsByDisease(
+                    latestDetections,
+                  );
 
                   return SingleChildScrollView(
                     child: Column(
@@ -292,24 +318,32 @@ class DiseaseDetectionScreen extends BaseView {
     final messenger = ScaffoldMessenger.of(context);
 
     try {
-      await ref
+      final uploadResult = await ref
           .read(diseaseImageUploadServiceProvider)
           .uploadImage(plantId: plantId, image: image);
       if (!context.mounted) {
         return;
       }
 
+      ref.read(diseaseImageUploadLatestResultProvider(plantId).notifier).state =
+          uploadResult;
       ref.invalidate(plantDetectionsProvider(plantId));
       ref.invalidate(plantControllerProvider);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Đã gửi ảnh lên server để phân tích')),
-      );
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          buildDiseaseFeedbackSnackBar('Đã gửi ảnh lên server để phân tích'),
+        );
     } catch (error) {
       if (!context.mounted) {
         return;
       }
 
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          buildDiseaseFeedbackSnackBar(error.toString(), isError: true),
+        );
     } finally {
       inFlight.state = false;
     }
@@ -335,17 +369,20 @@ class DiseaseDetectionScreen extends BaseView {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã gửi lệnh chụp hình cho thiết bị')),
+      showDiseaseFeedbackSnackBar(
+        context,
+        'Đã gửi lệnh chụp hình cho thiết bị',
       );
     } catch (error) {
       if (!context.mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(
+      showDiseaseFeedbackSnackBar(
         context,
-      ).showSnackBar(SnackBar(content: Text('Gửi lệnh chụp thất bại: $error')));
+        'Gửi lệnh chụp thất bại: $error',
+        isError: true,
+      );
     } finally {
       inFlight.state = false;
     }
@@ -518,6 +555,46 @@ class _BottomActionButtons extends ConsumerWidget {
       ),
     );
   }
+}
+
+bool _shouldUseUploadedImageResult(
+  DiseaseImageUploadResult? uploadResult,
+  String remoteSnapshotUrl,
+  String remoteCapturedAt,
+) {
+  if (uploadResult == null) {
+    return false;
+  }
+
+  final uploadedSnapshotUrl = uploadResult.snapshotUrl.trim();
+  final remoteSnapshot = remoteSnapshotUrl.trim();
+  final uploadedTime = _tryParseDetectionTime(uploadResult.capturedAt);
+  final remoteTime = _tryParseDetectionTime(remoteCapturedAt);
+  if (uploadedSnapshotUrl.isEmpty &&
+      remoteSnapshot.isNotEmpty &&
+      uploadedTime != null &&
+      remoteTime != null &&
+      !remoteTime.isBefore(uploadedTime)) {
+    return false;
+  }
+
+  if (uploadedSnapshotUrl.isNotEmpty &&
+      _normalizeSnapshotKey(uploadedSnapshotUrl) ==
+          _normalizeSnapshotKey(remoteSnapshot)) {
+    return false;
+  }
+
+  if (uploadedTime != null &&
+      remoteTime != null &&
+      remoteTime.isAfter(uploadedTime)) {
+    return false;
+  }
+
+  return true;
+}
+
+String _normalizeSnapshotKey(String value) {
+  return value.trim().replaceAll('\\', '/').toLowerCase();
 }
 
 String? _firstNonEmptySnapshot(Iterable<DetectionItem> items) {

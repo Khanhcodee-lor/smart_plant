@@ -35,16 +35,30 @@ final plantDetectionsProvider = StreamProvider.autoDispose
       final firestore = ref.watch(firebaseFirestoreServiceProvider);
 
       return Stream.multi((controller) {
-        var docDetections = const PlantDetectionsData();
-        var collectionDetections = const PlantDetectionsData();
+        final docDetectionsByPath = <String, PlantDetectionsData>{};
+        final collectionDetectionsByPath = <String, PlantDetectionsData>{};
         final documentPaths = _detectionDocumentPaths(plantId);
         final collectionPaths = _detectionCollectionPaths(plantId);
 
         void emitMerged() {
-          controller.add(_mergeDetections(docDetections, collectionDetections));
+          controller.add(
+            _mergeDetections(
+              _mergeDetectionsByPath(docDetectionsByPath),
+              _mergeDetectionsByPath(collectionDetectionsByPath),
+            ),
+          );
+        }
+
+        void clearPath(String path) {
+          if (documentPaths.contains(path)) {
+            docDetectionsByPath[path] = const PlantDetectionsData();
+          } else if (collectionPaths.contains(path)) {
+            collectionDetectionsByPath[path] = const PlantDetectionsData();
+          }
         }
 
         void handleError(String path, Object error, StackTrace stackTrace) {
+          clearPath(path);
           if (_isPermissionDenied(error)) {
             LoggerUtils.i('Firestore path denied and ignored: $path');
             emitMerged();
@@ -69,7 +83,7 @@ final plantDetectionsProvider = StreamProvider.autoDispose
                   (data) {
                     final parsed = _parseDetectionsFromDocument(data);
                     _logParsedDetections(path, parsed);
-                    docDetections = _mergeDetections(docDetections, parsed);
+                    docDetectionsByPath[path] = parsed;
                     emitMerged();
                   },
                   onError: (error, stackTrace) {
@@ -83,10 +97,7 @@ final plantDetectionsProvider = StreamProvider.autoDispose
                   (documents) {
                     final parsed = _parseDetectionsFromCollection(documents);
                     _logParsedDetections(path, parsed);
-                    collectionDetections = _mergeDetections(
-                      collectionDetections,
-                      parsed,
-                    );
+                    collectionDetectionsByPath[path] = parsed;
                     emitMerged();
                   },
                   onError: (error, stackTrace) {
@@ -123,6 +134,13 @@ PlantDetectionsData debugMergePlantDetections(
   PlantDetectionsData secondary,
 ) {
   return _mergeDetections(primary, secondary);
+}
+
+@visibleForTesting
+PlantDetectionsData debugMergePlantDetectionsByPath(
+  Map<String, PlantDetectionsData> detectionsByPath,
+) {
+  return _mergeDetectionsByPath(detectionsByPath);
 }
 
 PlantDetectionsData _parseDetectionsFromDocument(Map<String, dynamic>? data) {
@@ -369,6 +387,16 @@ PlantDetectionsData _mergeDetections(
     latestSnapshotUrl: fallbackSnapshotUrl,
     latestCapturedAt: fallbackCapturedAt,
   );
+}
+
+PlantDetectionsData _mergeDetectionsByPath(
+  Map<String, PlantDetectionsData> detectionsByPath,
+) {
+  var merged = const PlantDetectionsData();
+  for (final detections in detectionsByPath.values) {
+    merged = _mergeDetections(merged, detections);
+  }
+  return merged;
 }
 
 List<DetectionItem> _extractFirstNonEmptyDetectionItemsFromCandidates(

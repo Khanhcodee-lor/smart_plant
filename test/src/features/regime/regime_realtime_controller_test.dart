@@ -27,8 +27,35 @@ void main() {
     expect(data.pump.displayLabel, 'Bơm tự động');
   });
 
+  test('parse legacy realtime plants export data', () {
+    final data = RegimeRealtimeData.fromDatabase({
+      'pump': {'status': 1},
+      'sensors': {
+        'latest': {
+          'temperature': 27.8,
+          'humidity': 68,
+          'soilMoisture': 42,
+          'time': '2026-03-09 10:30:00',
+        },
+      },
+    });
+
+    expect(data.temperature, 27.8);
+    expect(data.humidity, 68);
+    expect(data.soilMoisture, 42);
+    expect(data.updatedAt, '2026-03-09 10:30:00');
+    expect(data.pump.enabled, isTrue);
+  });
+
   test('build pump control path under realtime plant node', () {
     expect(buildPumpControlPath('tomato_001'), 'plant/tomato_001/control/pump');
+  });
+
+  test('build pump control paths for current and legacy roots', () {
+    expect(buildPumpControlPaths('tomato_001'), [
+      'plant/tomato_001/control/pump',
+      'plants/tomato_001/control/pump',
+    ]);
   });
 
   test('build automatic pump payload', () {

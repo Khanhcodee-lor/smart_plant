@@ -46,5 +46,5 @@ final plantCaptureCommandServiceProvider = Provider<PlantCaptureCommandService>(
   },
 );
 
-final plantCaptureCommandInFlightProvider =
-    StateProvider.autoDispose.family<bool, String>((ref, plantId) => false);
+final plantCaptureCommandInFlightProvider = StateProvider.autoDispose
+    .family<bool, String>((ref, plantId) => false);

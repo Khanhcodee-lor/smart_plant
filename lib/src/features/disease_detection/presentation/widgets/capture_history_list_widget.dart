@@ -2,6 +2,7 @@ import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.dart';
 import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_feedback_snack_bar.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/snapshot_image_viewer.dart';
@@ -183,9 +184,18 @@ class _CaptureHistoryDetailSheetState
   Widget build(BuildContext context) {
     final item = widget.item;
     final snapshotPath = item.snapshotUrl.trim();
-    final snapshotAsync = snapshotPath.isEmpty
-        ? const AsyncValue<String>.data('')
-        : ref.watch(latestSnapshotUrlProvider(snapshotPath));
+    final shouldResolveSnapshot =
+        snapshotPath.isNotEmpty &&
+        !isLocalSnapshotImagePath(snapshotPath) &&
+        !isInlineSnapshotImageData(snapshotPath);
+    final snapshotAsync = shouldResolveSnapshot
+        ? ref.watch(latestSnapshotUrlProvider(snapshotPath))
+        : const AsyncValue<String>.data('');
+    final effectiveSnapshotAsync = shouldResolveSnapshot
+        ? snapshotAsync
+        : (snapshotPath.isEmpty
+              ? const AsyncValue<String>.data('')
+              : AsyncValue<String>.data(snapshotPath));
     final diseaseLabel = translateDiseaseLabel(item.diseaseClass);
     final isHealthy = isHealthyDisease(item.diseaseClass);
 
@@ -233,7 +243,7 @@ class _CaptureHistoryDetailSheetState
                           color: AppColors.backgroundGreen,
                           borderRadius: BorderRadius.circular(20.r),
                         ),
-                        child: snapshotAsync.when(
+                        child: effectiveSnapshotAsync.when(
                           data: (resolvedUrl) {
                             if (resolvedUrl.isEmpty) {
                               return const _HistorySnapshotPlaceholder(
@@ -252,22 +262,17 @@ class _CaptureHistoryDetailSheetState
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  Image.network(
-                                    resolvedUrl,
+                                  SnapshotImage(
+                                    imageUrl: resolvedUrl,
                                     fit: BoxFit.cover,
-                                    loadingBuilder:
-                                        (context, child, loadingProgress) {
-                                          if (loadingProgress == null) {
-                                            return child;
-                                          }
-
-                                          return const _HistorySnapshotPlaceholder(
-                                            icon: Icons.image_search_outlined,
-                                            message: 'Đang tải ảnh...',
-                                            showLoader: true,
-                                          );
-                                        },
-                                    errorBuilder: (context, error, stackTrace) {
+                                    loadingBuilder: (context) {
+                                      return const _HistorySnapshotPlaceholder(
+                                        icon: Icons.image_search_outlined,
+                                        message: 'Đang tải ảnh...',
+                                        showLoader: true,
+                                      );
+                                    },
+                                    errorBuilder: (context) {
                                       return const _HistorySnapshotPlaceholder(
                                         icon: Icons.broken_image_outlined,
                                         message: 'Không tải được ảnh chụp',
@@ -436,10 +441,10 @@ Yêu cầu trả lời ngắn gọn theo các mục:
   Future<void> _handleDeletePressed() async {
     final documentPath = widget.item.sourceDocumentPath.trim();
     if (documentPath.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không tìm thấy đường dẫn Firebase để xóa'),
-        ),
+      showDiseaseFeedbackSnackBar(
+        context,
+        'Không tìm thấy đường dẫn Firebase để xóa',
+        isError: true,
       );
       return;
     }
@@ -458,15 +463,21 @@ Yêu cầu trả lời ngắn gọn theo các mục:
       }
 
       navigator.pop();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Đã xóa lần chụp khỏi Firebase')),
-      );
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          buildDiseaseFeedbackSnackBar('Đã xóa lần chụp khỏi Firebase'),
+        );
     } catch (error) {
       if (!mounted) {
         return;
       }
 
-      messenger.showSnackBar(SnackBar(content: Text('Xóa thất bại: $error')));
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          buildDiseaseFeedbackSnackBar('Xóa thất bại: $error', isError: true),
+        );
     } finally {
       if (mounted) {
         setState(() {

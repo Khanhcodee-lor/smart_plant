@@ -49,4 +49,22 @@ void main() {
     );
     expect(plant.latestDetection?.time, '2026-04-28 00:53:18');
   });
+
+  test('Plant.fromFirestore reads storage path from detection history', () {
+    final plant = Plant.fromFirestore('tomato_001', {
+      'detections': {
+        'history': {
+          'capture_1': {
+            'class': 'Tomato leaf late blight',
+            'confidence': 0.71,
+            'annotated_frame_storage_path': 'detections/history_latest.jpg',
+            'time': '2026-04-28T00:53:18.349940',
+          },
+        },
+      },
+    });
+
+    expect(plant.history, hasLength(1));
+    expect(plant.history.single.snapshotUrl, 'detections/history_latest.jpg');
+  });
 }
