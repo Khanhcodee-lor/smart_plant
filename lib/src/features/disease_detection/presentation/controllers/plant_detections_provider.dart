@@ -162,6 +162,8 @@ PlantDetectionsData _parseDetectionsFromDocument(Map<String, dynamic>? data) {
       normalized['updatedAt'],
     ]),
   );
+  final safeImageUrl = _safeImageUrlCandidate(normalized['image_url']);
+  final safeImageUrlLegacy = _safeImageUrlCandidate(normalized['imageUrl']);
   final latestSnapshotUrl =
       _firstNonEmptyString([
         normalized['annotated_frame_storage_path'],
@@ -170,6 +172,16 @@ PlantDetectionsData _parseDetectionsFromDocument(Map<String, dynamic>? data) {
         normalized['annotated_frame_url'],
         normalized['latest_annotated_frame_url'],
         normalized['latest_snapshot_url'],
+        normalized['annotated_image_url'],
+        normalized['annotatedImageUrl'],
+        normalized['processed_image_url'],
+        normalized['processedImageUrl'],
+        normalized['output_image_url'],
+        normalized['outputImageUrl'],
+        normalized['annotated_image'],
+        normalized['image'],
+        safeImageUrl,
+        safeImageUrlLegacy,
       ]) ??
       '';
 
@@ -227,6 +239,8 @@ PlantDetectionsData _parseDetectionsFromCollection(
         normalized['timestamp'],
       ]),
     );
+    final safeImageUrl = _safeImageUrlCandidate(normalized['image_url']);
+    final safeImageUrlLegacy = _safeImageUrlCandidate(normalized['imageUrl']);
     final snapshotUrl =
         _firstNonEmptyString([
           normalized['annotated_frame_storage_path'],
@@ -238,8 +252,16 @@ PlantDetectionsData _parseDetectionsFromCollection(
           normalized['annotatedFrameUrl'],
           normalized['snapshot'],
           normalized['snapshotUrl'],
+          normalized['annotated_image_url'],
+          normalized['annotatedImageUrl'],
+          normalized['processed_image_url'],
+          normalized['processedImageUrl'],
+          normalized['output_image_url'],
+          normalized['outputImageUrl'],
+          normalized['annotated_image'],
           normalized['image'],
-          normalized['image_url'],
+          safeImageUrl,
+          safeImageUrlLegacy,
         ]) ??
         '';
 
@@ -597,8 +619,16 @@ DetectionItem? _toDetectionItem(
         data['annotatedFrameUrl'],
         data['snapshot'],
         data['snapshotUrl'],
+        data['annotated_image_url'],
+        data['annotatedImageUrl'],
+        data['processed_image_url'],
+        data['processedImageUrl'],
+        data['output_image_url'],
+        data['outputImageUrl'],
+        data['annotated_image'],
         data['image'],
-        data['image_url'],
+        _safeImageUrlCandidate(data['image_url']),
+        _safeImageUrlCandidate(data['imageUrl']),
         fallbackSnapshotUrl,
       ]) ??
       '';
@@ -782,8 +812,16 @@ String _snapshotUrlFromMap(
         data['latest_snapshot_url'],
         data['snapshot'],
         data['snapshotUrl'],
+        data['annotated_image_url'],
+        data['annotatedImageUrl'],
+        data['processed_image_url'],
+        data['processedImageUrl'],
+        data['output_image_url'],
+        data['outputImageUrl'],
+        data['annotated_image'],
         data['image'],
-        data['image_url'],
+        _safeImageUrlCandidate(data['image_url']),
+        _safeImageUrlCandidate(data['imageUrl']),
         fallbackSnapshotUrl,
       ]) ??
       '';
@@ -916,6 +954,38 @@ String? _firstNonEmptyString(List<dynamic> candidates) {
     }
   }
   return null;
+}
+
+String? _safeImageUrlCandidate(dynamic value) {
+  final url = value?.toString().trim();
+  if (url == null || url.isEmpty) {
+    return null;
+  }
+  if (_isFirebaseStorageUrl(url)) {
+    return url;
+  }
+  return null;
+}
+
+bool _isFirebaseStorageUrl(String value) {
+  final normalized = value.trim();
+  if (normalized.startsWith('gs://')) {
+    return true;
+  }
+
+  final uri = Uri.tryParse(normalized);
+  if (uri == null) {
+    return false;
+  }
+
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'https') {
+    return false;
+  }
+
+  final host = uri.host.toLowerCase();
+  return host == 'storage.googleapis.com' ||
+      host.contains('firebasestorage.googleapis.com');
 }
 
 double _normalizeConfidence(dynamic value) {

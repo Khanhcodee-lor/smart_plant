@@ -152,6 +152,10 @@ class Plant with _$Plant {
         latestData['timestamp'],
       ]),
     );
+    final safeLatestImageUrl = _safeImageUrlCandidate(latestData['image_url']);
+    final safeLatestImageUrlLegacy = _safeImageUrlCandidate(
+      latestData['imageUrl'],
+    );
     final latestSnapshot =
         _firstNonEmptyString([
           latestData['annotated_frame_storage_path'],
@@ -163,8 +167,16 @@ class Plant with _$Plant {
           latestData['annotatedFrameUrl'],
           latestData['snapshot'],
           latestData['snapshotUrl'],
+          latestData['annotated_image_url'],
+          latestData['annotatedImageUrl'],
+          latestData['processed_image_url'],
+          latestData['processedImageUrl'],
+          latestData['output_image_url'],
+          latestData['outputImageUrl'],
+          latestData['annotated_image'],
           latestData['image'],
-          latestData['image_url'],
+          safeLatestImageUrl,
+          safeLatestImageUrlLegacy,
         ]) ??
         '';
 
@@ -286,6 +298,38 @@ String? _firstNonEmptyString(List<dynamic> candidates) {
   return null;
 }
 
+String? _safeImageUrlCandidate(dynamic value) {
+  final url = value?.toString().trim();
+  if (url == null || url.isEmpty) {
+    return null;
+  }
+  if (_isFirebaseStorageUrl(url)) {
+    return url;
+  }
+  return null;
+}
+
+bool _isFirebaseStorageUrl(String value) {
+  final normalized = value.trim();
+  if (normalized.startsWith('gs://')) {
+    return true;
+  }
+
+  final uri = Uri.tryParse(normalized);
+  if (uri == null) {
+    return false;
+  }
+
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'https') {
+    return false;
+  }
+
+  final host = uri.host.toLowerCase();
+  return host == 'storage.googleapis.com' ||
+      host.contains('firebasestorage.googleapis.com');
+}
+
 double _parseDouble(dynamic value) {
   if (value is num) {
     return value.toDouble();
@@ -392,8 +436,16 @@ DetectionItem? _buildDetectionItem(Map<dynamic, dynamic> value) {
         value['annotatedFrameUrl'],
         value['snapshot'],
         value['snapshotUrl'],
+        value['annotated_image_url'],
+        value['annotatedImageUrl'],
+        value['processed_image_url'],
+        value['processedImageUrl'],
+        value['output_image_url'],
+        value['outputImageUrl'],
+        value['annotated_image'],
         value['image'],
-        value['image_url'],
+        _safeImageUrlCandidate(value['image_url']),
+        _safeImageUrlCandidate(value['imageUrl']),
       ]) ??
       '';
 

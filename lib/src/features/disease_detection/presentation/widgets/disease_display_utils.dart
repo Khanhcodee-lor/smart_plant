@@ -1,11 +1,16 @@
 String translateDiseaseLabel(String diseaseName) {
-  final normalized = diseaseName.trim().toLowerCase();
+  final normalized = _normalizeDiseaseKey(diseaseName);
 
   const diseaseTranslations = <String, String>{
     'healthy': 'Khỏe mạnh',
+    'tomato healthy': 'Khỏe mạnh',
+    'tomato leaf bacterial spot': 'Lá cà chua bệnh đốm vi khuẩn',
     'tomato leaf late blight': 'Bệnh mốc sương trên lá cà chua',
+    'tomato late blight': 'Bệnh mốc sương trên lá cà chua',
     'tomato leaf early blight': 'Bệnh đốm vòng trên lá cà chua',
+    'tomato early blight': 'Bệnh đốm vòng trên lá cà chua',
     'tomato leaf mold': 'Bệnh nấm lá cà chua',
+    'tomato mold leaf': 'Bệnh nấm lá cà chua',
     'tomato yellow leaf curl virus': 'Bệnh xoăn vàng lá do virus',
     'tomato mosaic virus': 'Bệnh khảm lá do virus',
     'tomato septoria leaf spot': 'Bệnh đốm lá Septoria',
@@ -18,5 +23,14 @@ String translateDiseaseLabel(String diseaseName) {
 }
 
 bool isHealthyDisease(String diseaseName) {
-  return diseaseName.trim().toLowerCase() == 'healthy';
+  final normalized = _normalizeDiseaseKey(diseaseName);
+  return normalized == 'healthy' || normalized == 'tomato healthy';
+}
+
+String _normalizeDiseaseKey(String diseaseName) {
+  return diseaseName
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ');
 }

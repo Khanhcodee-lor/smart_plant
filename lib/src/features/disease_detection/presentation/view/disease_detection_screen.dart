@@ -139,16 +139,19 @@ class DiseaseDetectionScreen extends BaseView {
                     uploadedImageResult,
                     latestSnapshotUrl,
                     latestCapturedAt,
+                    latestDetections,
                   )) {
                     final uploadDetections = uploadedImageResult!.detections;
-                    latestSnapshotUrl =
-                        uploadedImageResult.snapshotUrl.trim().isNotEmpty
-                        ? uploadedImageResult.snapshotUrl.trim()
-                        : '';
-                    latestCapturedAt =
-                        uploadedImageResult.capturedAt.trim().isNotEmpty
-                        ? uploadedImageResult.capturedAt.trim()
-                        : latestCapturedAt;
+                    if (_shouldUseUploadedSnapshot(uploadedImageResult)) {
+                      latestSnapshotUrl =
+                          uploadedImageResult.snapshotUrl.trim().isNotEmpty
+                          ? uploadedImageResult.snapshotUrl.trim()
+                          : latestSnapshotUrl;
+                      latestCapturedAt =
+                          uploadedImageResult.capturedAt.trim().isNotEmpty
+                          ? uploadedImageResult.capturedAt.trim()
+                          : latestCapturedAt;
+                    }
                     latestDetection = uploadedImageResult.latestDetection;
                     latestDetections = uploadDetections;
                     history = [
@@ -561,6 +564,7 @@ bool _shouldUseUploadedImageResult(
   DiseaseImageUploadResult? uploadResult,
   String remoteSnapshotUrl,
   String remoteCapturedAt,
+  List<DetectionItem> remoteLatestDetections,
 ) {
   if (uploadResult == null) {
     return false;
@@ -568,6 +572,31 @@ bool _shouldUseUploadedImageResult(
 
   final uploadedSnapshotUrl = uploadResult.snapshotUrl.trim();
   final remoteSnapshot = remoteSnapshotUrl.trim();
+  final uploadDetections = uploadResult.detections;
+
+  if (uploadedSnapshotUrl.isNotEmpty &&
+      _normalizeSnapshotKey(uploadedSnapshotUrl) ==
+          _normalizeSnapshotKey(remoteSnapshot)) {
+    return false;
+  }
+
+  if (uploadResult.hasServerSnapshot) {
+    return uploadedSnapshotUrl.isNotEmpty || uploadDetections.isNotEmpty;
+  }
+
+  if (uploadDetections.isEmpty) {
+    return uploadedSnapshotUrl.isNotEmpty;
+  }
+
+  if (remoteSnapshot.isNotEmpty &&
+      _remoteSnapshotLooksLikeUploadedResult(
+        uploadResult,
+        remoteCapturedAt,
+        remoteLatestDetections,
+      )) {
+    return false;
+  }
+
   final uploadedTime = _tryParseDetectionTime(uploadResult.capturedAt);
   final remoteTime = _tryParseDetectionTime(remoteCapturedAt);
   if (uploadedSnapshotUrl.isEmpty &&
@@ -578,12 +607,6 @@ bool _shouldUseUploadedImageResult(
     return false;
   }
 
-  if (uploadedSnapshotUrl.isNotEmpty &&
-      _normalizeSnapshotKey(uploadedSnapshotUrl) ==
-          _normalizeSnapshotKey(remoteSnapshot)) {
-    return false;
-  }
-
   if (uploadedTime != null &&
       remoteTime != null &&
       remoteTime.isAfter(uploadedTime)) {
@@ -591,6 +614,67 @@ bool _shouldUseUploadedImageResult(
   }
 
   return true;
+}
+
+bool _shouldUseUploadedSnapshot(DiseaseImageUploadResult uploadResult) {
+  final uploadedSnapshotUrl = uploadResult.snapshotUrl.trim();
+  if (uploadedSnapshotUrl.isEmpty) {
+    return false;
+  }
+
+  if (uploadResult.hasServerSnapshot) {
+    return true;
+  }
+
+  return uploadResult.detections.isEmpty;
+}
+
+bool _remoteSnapshotLooksLikeUploadedResult(
+  DiseaseImageUploadResult uploadResult,
+  String remoteCapturedAt,
+  List<DetectionItem> remoteLatestDetections,
+) {
+  final uploadDiseaseKeys = _diseaseKeys(uploadResult.detections);
+  if (uploadDiseaseKeys.isEmpty || remoteLatestDetections.isEmpty) {
+    return false;
+  }
+
+  final remoteDiseaseKeys = _diseaseKeys(remoteLatestDetections);
+  if (!remoteDiseaseKeys.any(uploadDiseaseKeys.contains)) {
+    return false;
+  }
+
+  final uploadedTime = _tryParseDetectionTime(uploadResult.capturedAt);
+  final remoteTime =
+      _newestDetectionTime(remoteLatestDetections) ??
+      _tryParseDetectionTime(remoteCapturedAt);
+  if (uploadedTime == null || remoteTime == null) {
+    return true;
+  }
+
+  return remoteTime.difference(uploadedTime).abs() <= const Duration(hours: 12);
+}
+
+Set<String> _diseaseKeys(List<DetectionItem> items) {
+  return {
+    for (final item in items)
+      if (item.diseaseClass.trim().isNotEmpty)
+        item.diseaseClass.trim().toLowerCase(),
+  };
+}
+
+DateTime? _newestDetectionTime(List<DetectionItem> items) {
+  DateTime? newest;
+  for (final item in items) {
+    final parsed = _tryParseDetectionTime(item.time);
+    if (parsed == null) {
+      continue;
+    }
+    if (newest == null || parsed.isAfter(newest)) {
+      newest = parsed;
+    }
+  }
+  return newest;
 }
 
 String _normalizeSnapshotKey(String value) {

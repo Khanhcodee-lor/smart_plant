@@ -145,7 +145,8 @@ DiseaseImageUploadResult _parseUploadResult(
     ]),
   );
   final serverSnapshotUrl =
-      _snapshotUrlFromMap(payload) ?? _snapshotUrlFromMap(root);
+      _processedSnapshotUrlFromMap(payload) ??
+      _processedSnapshotUrlFromMap(root);
   final snapshotUrl = serverSnapshotUrl ?? fallbackSnapshotUrl;
   final detections = _extractDetectionItems(
     [
@@ -337,15 +338,20 @@ DetectionItem? _toDetectionItem(
         fallbackTime,
       ]),
     ),
-    snapshotUrl: _snapshotUrlFromMap(data) ?? fallbackSnapshotUrl,
+    snapshotUrl: _processedSnapshotUrlFromMap(data) ?? fallbackSnapshotUrl,
   );
 }
 
-String? _snapshotUrlFromMap(Map<dynamic, dynamic> data) {
+String? _processedSnapshotUrlFromMap(Map<dynamic, dynamic> data) {
   final base64Image = _firstNonEmptyString([
     data['annotated_frame_base64'],
     data['annotated_image_base64'],
-    data['image_base64'],
+    data['processed_frame_base64'],
+    data['processed_image_base64'],
+    data['output_frame_base64'],
+    data['output_image_base64'],
+    data['result_frame_base64'],
+    data['result_image_base64'],
   ]);
   if (base64Image != null) {
     return base64Image.startsWith('data:image/')
@@ -356,21 +362,48 @@ String? _snapshotUrlFromMap(Map<dynamic, dynamic> data) {
   return _firstNonEmptyString([
     data['annotated_frame_storage_path'],
     data['latest_annotated_frame_storage_path'],
-    data['frame_storage_path'],
     data['annotatedFrameStoragePath'],
-    data['latest_snapshot_path'],
-    data['snapshot_path'],
     data['annotated_frame_url'],
     data['latest_annotated_frame_url'],
-    data['frame_url'],
     data['annotatedFrameUrl'],
-    data['latest_snapshot_url'],
-    data['snapshot'],
-    data['snapshotUrl'],
-    data['image_url'],
-    data['imageUrl'],
+    data['annotated_image_url'],
+    data['annotatedImageUrl'],
+    data['annotated_frame'],
+    data['annotatedFrame'],
     data['annotated_image'],
-    data['image'],
+    data['annotatedImage'],
+    data['processed_frame_storage_path'],
+    data['processedFrameStoragePath'],
+    data['processed_frame_url'],
+    data['processedFrameUrl'],
+    data['processed_image_url'],
+    data['processedImageUrl'],
+    data['processed_frame'],
+    data['processedFrame'],
+    data['processed_image'],
+    data['processedImage'],
+    data['output_frame_storage_path'],
+    data['outputFrameStoragePath'],
+    data['output_frame_url'],
+    data['outputFrameUrl'],
+    data['output_image_url'],
+    data['outputImageUrl'],
+    data['output_frame'],
+    data['outputFrame'],
+    data['output_image'],
+    data['outputImage'],
+    data['result_frame_storage_path'],
+    data['resultFrameStoragePath'],
+    data['result_image_storage_path'],
+    data['resultImageStoragePath'],
+    data['result_frame_url'],
+    data['resultFrameUrl'],
+    data['result_image_url'],
+    data['resultImageUrl'],
+    data['result_frame'],
+    data['resultFrame'],
+    data['result_image'],
+    data['resultImage'],
   ]);
 }
 
