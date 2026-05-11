@@ -1,6 +1,7 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/services/firebase/firebase_storage_service.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/snapshot_image_viewer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -28,6 +29,7 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
     final snapshotAsync = normalizedPath.isEmpty
         ? const AsyncValue<String>.data('')
         : ref.watch(latestSnapshotUrlProvider(normalizedPath));
+    final resolvedSnapshotUrl = snapshotAsync.asData?.value.trim() ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,106 +42,134 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
               color: AppColors.accent,
             ),
             SizedBox(width: 8.w),
-            "Ảnh chụp mới nhất".h1Custom(
+            'Ảnh chụp mới nhất'.h1Custom(
               size: 16.sp,
               color: AppColors.textMain,
             ),
           ],
         ),
         SizedBox(height: 12.h),
-        Container(
-          height: 220.h,
-          width: double.infinity,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24.r),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              snapshotAsync.when(
-                data: (resolvedUrl) {
-                  if (resolvedUrl.isEmpty) {
-                    return _SnapshotPlaceholder(
-                      icon: Icons.photo_outlined,
-                      message: 'Chưa có ảnh chụp mới nhất',
+        GestureDetector(
+          onTap: resolvedSnapshotUrl.isEmpty
+              ? null
+              : () => showSnapshotImageViewer(
+                  context,
+                  imageUrl: resolvedSnapshotUrl,
+                  title: 'Ảnh chụp mới nhất',
+                  subtitle: capturedAt,
+                ),
+          child: Container(
+            height: 220.h,
+            width: double.infinity,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24.r),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                snapshotAsync.when(
+                  data: (resolvedUrl) {
+                    if (resolvedUrl.isEmpty) {
+                      return const _SnapshotPlaceholder(
+                        icon: Icons.photo_outlined,
+                        message: 'Chưa có ảnh chụp mới nhất',
+                      );
+                    }
+
+                    return Image.network(
+                      resolvedUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) {
+                          return child;
+                        }
+
+                        return const _SnapshotPlaceholder(
+                          icon: Icons.image_search_outlined,
+                          message: 'Đang tải ảnh chụp...',
+                          showLoader: true,
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return const _SnapshotPlaceholder(
+                          icon: Icons.broken_image_outlined,
+                          message: 'Không tải được ảnh chụp',
+                        );
+                      },
                     );
-                  }
-
-                  return Image.network(
-                    resolvedUrl,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) {
-                        return child;
-                      }
-
-                      return const _SnapshotPlaceholder(
-                        icon: Icons.image_search_outlined,
-                        message: 'Đang tải ảnh chụp...',
-                        showLoader: true,
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return const _SnapshotPlaceholder(
-                        icon: Icons.broken_image_outlined,
-                        message: 'Không tải được ảnh chụp',
-                      );
-                    },
-                  );
-                },
-                loading: () => const _SnapshotPlaceholder(
-                  icon: Icons.image_search_outlined,
-                  message: 'Đang tải ảnh chụp...',
-                  showLoader: true,
-                ),
-                error: (_, _) => const _SnapshotPlaceholder(
-                  icon: Icons.broken_image_outlined,
-                  message: 'Không tải được ảnh chụp',
-                ),
-              ),
-              if (capturedAt.trim().isNotEmpty)
-                Positioned(
-                  left: 12.w,
-                  right: 12.w,
-                  bottom: 12.h,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.w,
-                      vertical: 10.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.48),
-                      borderRadius: BorderRadius.circular(14.r),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.schedule_outlined,
-                          color: Colors.white,
-                          size: 14.sp,
-                        ),
-                        SizedBox(width: 6.w),
-                        Expanded(
-                          child: capturedAt.bodyCustom(
-                            size: 12.sp,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                  },
+                  loading: () => const _SnapshotPlaceholder(
+                    icon: Icons.image_search_outlined,
+                    message: 'Đang tải ảnh chụp...',
+                    showLoader: true,
+                  ),
+                  error: (_, _) => const _SnapshotPlaceholder(
+                    icon: Icons.broken_image_outlined,
+                    message: 'Không tải được ảnh chụp',
                   ),
                 ),
-            ],
+                if (capturedAt.trim().isNotEmpty)
+                  Positioned(
+                    left: 12.w,
+                    right: 12.w,
+                    bottom: 12.h,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 10.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.48),
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.schedule_outlined,
+                            color: Colors.white,
+                            size: 14.sp,
+                          ),
+                          SizedBox(width: 6.w),
+                          Expanded(
+                            child: capturedAt.bodyCustom(
+                              size: 12.sp,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (resolvedSnapshotUrl.isNotEmpty)
+                  Positioned(
+                    top: 12.h,
+                    right: 12.w,
+                    child: Container(
+                      width: 34.w,
+                      height: 34.w,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.42),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.zoom_out_map_rounded,
+                        color: Colors.white,
+                        size: 18.sp,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ],

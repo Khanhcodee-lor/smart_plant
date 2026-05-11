@@ -118,6 +118,9 @@ class DiseaseDetectionScreen extends BaseView {
                       : (latestDetection != null
                             ? <DetectionItem>[latestDetection]
                             : history.take(1).toList());
+                  final uniqueLatestDetections = _uniqueDetectionsByDisease(
+                    latestDetections,
+                  );
                   final latestSnapshotUrl =
                       _firstNonEmptySnapshot([
                         ...latestDetections,
@@ -151,7 +154,7 @@ class DiseaseDetectionScreen extends BaseView {
                         ),
                         SizedBox(height: 12.h),
                         DiseaseHistoryListWidget(
-                          items: latestDetections,
+                          items: uniqueLatestDetections,
                           emptyMessage: 'Chưa có dữ liệu bệnh mới nhất',
                         ),
                         SizedBox(height: 24.h),
@@ -537,6 +540,54 @@ String? _firstNonEmptyTime(Iterable<DetectionItem> items) {
   }
 
   return null;
+}
+
+List<DetectionItem> _uniqueDetectionsByDisease(List<DetectionItem> items) {
+  final uniqueItems = <String, DetectionItem>{};
+
+  for (final item in items) {
+    final key = item.diseaseClass.trim().toLowerCase();
+    if (key.isEmpty) {
+      continue;
+    }
+
+    final existing = uniqueItems[key];
+    if (existing == null || _isBetterDiseaseItem(item, existing)) {
+      uniqueItems[key] = item;
+    }
+  }
+
+  return uniqueItems.values.toList();
+}
+
+bool _isBetterDiseaseItem(DetectionItem candidate, DetectionItem current) {
+  final confidenceCompare = candidate.confidence.compareTo(current.confidence);
+  if (confidenceCompare != 0) {
+    return confidenceCompare > 0;
+  }
+
+  final candidateHasSnapshot = candidate.snapshotUrl.trim().isNotEmpty;
+  final currentHasSnapshot = current.snapshotUrl.trim().isNotEmpty;
+  if (candidateHasSnapshot != currentHasSnapshot) {
+    return candidateHasSnapshot;
+  }
+
+  final candidateTime = _tryParseDetectionTime(candidate.time);
+  final currentTime = _tryParseDetectionTime(current.time);
+  if (candidateTime != null && currentTime != null) {
+    return candidateTime.isAfter(currentTime);
+  }
+
+  return candidate.time.compareTo(current.time) > 0;
+}
+
+DateTime? _tryParseDetectionTime(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+
+  return DateTime.tryParse(normalized.replaceFirst(' ', 'T'));
 }
 
 Plant? _resolvePlantForScreen(List<Plant> plants, String plantId) {

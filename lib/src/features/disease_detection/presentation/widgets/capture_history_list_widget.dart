@@ -4,6 +4,7 @@ import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.da
 import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/snapshot_image_viewer.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -241,27 +242,57 @@ class _CaptureHistoryDetailSheetState
                               );
                             }
 
-                            return Image.network(
-                              resolvedUrl,
-                              fit: BoxFit.cover,
-                              loadingBuilder:
-                                  (context, child, loadingProgress) {
-                                    if (loadingProgress == null) {
-                                      return child;
-                                    }
+                            return GestureDetector(
+                              onTap: () => showSnapshotImageViewer(
+                                context,
+                                imageUrl: resolvedUrl,
+                                title: 'Ảnh lịch sử chụp',
+                                subtitle: item.time,
+                              ),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.network(
+                                    resolvedUrl,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder:
+                                        (context, child, loadingProgress) {
+                                          if (loadingProgress == null) {
+                                            return child;
+                                          }
 
-                                    return const _HistorySnapshotPlaceholder(
-                                      icon: Icons.image_search_outlined,
-                                      message: 'Đang tải ảnh...',
-                                      showLoader: true,
-                                    );
-                                  },
-                              errorBuilder: (context, error, stackTrace) {
-                                return const _HistorySnapshotPlaceholder(
-                                  icon: Icons.broken_image_outlined,
-                                  message: 'Không tải được ảnh chụp',
-                                );
-                              },
+                                          return const _HistorySnapshotPlaceholder(
+                                            icon: Icons.image_search_outlined,
+                                            message: 'Đang tải ảnh...',
+                                            showLoader: true,
+                                          );
+                                        },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const _HistorySnapshotPlaceholder(
+                                        icon: Icons.broken_image_outlined,
+                                        message: 'Không tải được ảnh chụp',
+                                      );
+                                    },
+                                  ),
+                                  Positioned(
+                                    top: 12.h,
+                                    right: 12.w,
+                                    child: Container(
+                                      width: 34.w,
+                                      height: 34.w,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.42),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.zoom_out_map_rounded,
+                                        color: Colors.white,
+                                        size: 18.sp,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             );
                           },
                           loading: () => const _HistorySnapshotPlaceholder(
