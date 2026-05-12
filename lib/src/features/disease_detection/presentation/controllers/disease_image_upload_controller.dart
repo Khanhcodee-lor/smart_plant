@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+const _noDiseaseDetectedLabel = 'Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh';
+
 const diseaseImageUploadEndpoint = String.fromEnvironment(
   'DISEASE_UPLOAD_API_URL',
   defaultValue: 'https://khanhsssd-khanhdz.hf.space/api/detect',
@@ -133,6 +135,14 @@ DiseaseImageUploadResult _parseUploadResult(
       payload['latest_detection_at'],
       payload['detected_at'],
       payload['detectedAt'],
+      payload['captured_at'],
+      payload['capturedAt'],
+      payload['capture_time'],
+      payload['captureTime'],
+      payload['processed_at'],
+      payload['processedAt'],
+      payload['uploaded_at'],
+      payload['uploadedAt'],
       payload['created_at'],
       payload['createdAt'],
       payload['saved_at'],
@@ -153,6 +163,10 @@ DiseaseImageUploadResult _parseUploadResult(
       if (normalizedData is Iterable && normalizedData is! String)
         normalizedData,
       payload['data'],
+      payload['latest_objects'],
+      payload['latestObjects'],
+      payload['detected_objects'],
+      payload['detectedObjects'],
       payload['disease_list_unique_top'],
       payload['disease_list'],
       payload['disease_objects'],
@@ -169,12 +183,18 @@ DiseaseImageUploadResult _parseUploadResult(
     fallbackSnapshotUrl: snapshotUrl,
   );
   final normalizedDetections = _normalizeDetectionList(detections);
+  final effectiveDetections = normalizedDetections.isEmpty
+      ? _noDiseaseDetections(
+          fallbackTime: capturedAt,
+          fallbackSnapshotUrl: snapshotUrl,
+        )
+      : normalizedDetections;
 
   return DiseaseImageUploadResult(
     snapshotUrl: snapshotUrl,
     capturedAt: capturedAt,
     hasServerSnapshot: serverSnapshotUrl?.trim().isNotEmpty ?? false,
-    detections: normalizedDetections,
+    detections: effectiveDetections,
   );
 }
 
@@ -199,7 +219,12 @@ List<DetectionItem> _extractDetectionItems(
   List<dynamic> sources, {
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  int depth = 0,
 }) {
+  if (depth > 8) {
+    return const <DetectionItem>[];
+  }
+
   final items = <DetectionItem>[];
 
   for (final source in sources) {
@@ -215,29 +240,103 @@ List<DetectionItem> _extractDetectionItems(
       }
 
       for (final value in source) {
-        final item = _toDetectionItem(
+        final nestedItems = _extractDetectionItemsFromMap(
           _asMap(value),
           fallbackTime: fallbackTime,
           fallbackSnapshotUrl: fallbackSnapshotUrl,
+          depth: depth + 1,
         );
-        if (item != null) {
-          items.add(item);
-        }
+        items.addAll(nestedItems);
       }
       continue;
     }
 
-    final item = _toDetectionItem(
+    final nestedItems = _extractDetectionItemsFromMap(
       _asMap(source),
       fallbackTime: fallbackTime,
       fallbackSnapshotUrl: fallbackSnapshotUrl,
+      depth: depth + 1,
     );
-    if (item != null) {
-      items.add(item);
-    }
+    items.addAll(nestedItems);
   }
 
   return items;
+}
+
+List<DetectionItem> _extractDetectionItemsFromMap(
+  Map<dynamic, dynamic> data, {
+  required String fallbackTime,
+  required String fallbackSnapshotUrl,
+  int depth = 0,
+}) {
+  if (data.isEmpty || depth > 8) {
+    return const <DetectionItem>[];
+  }
+
+  final localTime = _stringifyTime(
+    _firstNonNull([
+      data['annotated_frame_local_saved_at'],
+      data['latest_detection_at'],
+      data['detected_at'],
+      data['detectedAt'],
+      data['captured_at'],
+      data['capturedAt'],
+      data['capture_time'],
+      data['captureTime'],
+      data['processed_at'],
+      data['processedAt'],
+      data['uploaded_at'],
+      data['uploadedAt'],
+      data['created_at'],
+      data['createdAt'],
+      data['saved_at'],
+      data['savedAt'],
+      data['firestore_saved_at'],
+      data['received_at'],
+      data['time'],
+      data['timestamp'],
+      fallbackTime,
+    ]),
+  );
+  final localSnapshotUrl =
+      _processedSnapshotUrlFromMap(data) ?? fallbackSnapshotUrl;
+
+  final nestedItems = _extractDetectionItems(
+    [
+      data['latest_objects'],
+      data['latestObjects'],
+      data['detected_objects'],
+      data['detectedObjects'],
+      data['disease_list_unique_top'],
+      data['disease_list'],
+      data['disease_objects'],
+      data['objects'],
+      data['detections'],
+      data['diseases'],
+      data['predictions'],
+      data['results'],
+      data['all_classes_detected_vi'],
+      data['all_classes_detected'],
+      data['all_classes_detected_en'],
+    ],
+    fallbackTime: localTime,
+    fallbackSnapshotUrl: localSnapshotUrl,
+    depth: depth + 1,
+  );
+  if (nestedItems.isNotEmpty) {
+    return nestedItems;
+  }
+
+  final directItem = _toDetectionItem(
+    data,
+    fallbackTime: localTime,
+    fallbackSnapshotUrl: localSnapshotUrl,
+  );
+  if (directItem != null) {
+    return <DetectionItem>[directItem];
+  }
+
+  return const <DetectionItem>[];
 }
 
 List<DetectionItem> _extractClassArrayItems(
@@ -278,6 +377,24 @@ List<DetectionItem> _extractClassArrayItems(
   return items;
 }
 
+List<DetectionItem> _noDiseaseDetections({
+  required String fallbackTime,
+  required String fallbackSnapshotUrl,
+}) {
+  if (fallbackTime.trim().isEmpty && fallbackSnapshotUrl.trim().isEmpty) {
+    return const <DetectionItem>[];
+  }
+
+  return [
+    DetectionItem(
+      diseaseClass: _noDiseaseDetectedLabel,
+      confidence: 0,
+      time: fallbackTime,
+      snapshotUrl: fallbackSnapshotUrl,
+    ),
+  ];
+}
+
 DetectionItem? _toDetectionItem(
   Map<dynamic, dynamic> data, {
   required String fallbackTime,
@@ -288,21 +405,27 @@ DetectionItem? _toDetectionItem(
   }
 
   final diseaseClass = _firstNonEmptyString([
-    data['class_name_en'],
+    data['class_name_vi'],
+    data['class_vi'],
+    data['label_vi'],
+    data['disease_vi'],
+    data['disease_name_vi'],
     data['class_name'],
     data['class'],
-    data['class_en'],
     data['label'],
-    data['label_en'],
     data['disease'],
-    data['disease_en'],
     data['diseaseClass'],
-    data['disease_name_en'],
     data['disease_name'],
+    _firstStringFromArrayLike(data['all_classes_detected_vi']),
+    _firstStringFromArrayLike(data['all_classes_detected']),
+    data['class_name_en'],
+    data['class_en'],
+    data['label_en'],
+    data['disease_en'],
+    data['disease_name_en'],
     data['prediction'],
     data['result'],
     _firstStringFromArrayLike(data['all_classes_detected_en']),
-    _firstStringFromArrayLike(data['all_classes_detected']),
   ]);
   if (diseaseClass == null) {
     return null;
@@ -329,10 +452,20 @@ DetectionItem? _toDetectionItem(
         data['latest_detection_at'],
         data['detected_at'],
         data['detectedAt'],
+        data['captured_at'],
+        data['capturedAt'],
+        data['capture_time'],
+        data['captureTime'],
+        data['processed_at'],
+        data['processedAt'],
+        data['uploaded_at'],
+        data['uploadedAt'],
         data['created_at'],
         data['createdAt'],
         data['saved_at'],
         data['savedAt'],
+        data['firestore_saved_at'],
+        data['received_at'],
         data['time'],
         data['timestamp'],
         fallbackTime,

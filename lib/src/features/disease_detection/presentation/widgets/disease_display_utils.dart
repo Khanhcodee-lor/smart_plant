@@ -2,6 +2,8 @@ String translateDiseaseLabel(String diseaseName) {
   final normalized = _normalizeDiseaseKey(diseaseName);
 
   const diseaseTranslations = <String, String>{
+    'no disease detected': 'Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh',
+    'khong phat hien benh': 'Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh',
     'healthy': 'Khỏe mạnh',
     'tomato healthy': 'Khỏe mạnh',
     'tomato leaf bacterial spot': 'Lá cà chua bệnh đốm vi khuẩn',
@@ -24,7 +26,12 @@ String translateDiseaseLabel(String diseaseName) {
 
 bool isHealthyDisease(String diseaseName) {
   final normalized = _normalizeDiseaseKey(diseaseName);
-  return normalized == 'healthy' || normalized == 'tomato healthy';
+  return normalized == 'healthy' ||
+      normalized == 'tomato healthy' ||
+      normalized == 'no disease detected' ||
+      normalized == 'khong phat hien benh' ||
+      normalized ==
+          _normalizeDiseaseKey('Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh');
 }
 
 String _normalizeDiseaseKey(String diseaseName) {

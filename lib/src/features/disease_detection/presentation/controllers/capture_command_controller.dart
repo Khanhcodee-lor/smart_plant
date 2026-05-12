@@ -6,17 +6,20 @@ class PlantCaptureCommandService {
 
   final FirebaseRealtimeDatabaseService _database;
 
-  Future<void> requestCapture(String plantId) async {
+  Future<String> requestCapture(String plantId) async {
     final normalizedPlantId = plantId.trim();
     if (normalizedPlantId.isEmpty) {
       throw ArgumentError('Plant id must not be empty.');
     }
 
     final now = DateTime.now().toUtc();
-    await _database.updateData(
-      buildPlantCaptureCommandPath(normalizedPlantId),
-      buildPlantCaptureCommandPayload(now: now),
+    final requestId = buildPlantCaptureRequestId(now);
+    final path = buildPlantCaptureCommandPath(normalizedPlantId);
+    await _database.setData(
+      path,
+      buildPlantCaptureRequestOnlyPayload(now: now, requestId: requestId),
     );
+    return requestId;
   }
 }
 
@@ -31,9 +34,20 @@ String buildPlantCaptureRequestId(DateTime now) {
 Map<String, dynamic> buildPlantCaptureCommandPayload({
   required DateTime now,
   String? requestId,
+  int status = 1,
 }) {
   return {
-    'status': 1,
+    'status': status,
+    'request_id': requestId ?? buildPlantCaptureRequestId(now),
+    'timestamp': now.millisecondsSinceEpoch / 1000,
+  };
+}
+
+Map<String, dynamic> buildPlantCaptureRequestOnlyPayload({
+  required DateTime now,
+  String? requestId,
+}) {
+  return {
     'request_id': requestId ?? buildPlantCaptureRequestId(now),
     'timestamp': now.millisecondsSinceEpoch / 1000,
   };
@@ -48,3 +62,6 @@ final plantCaptureCommandServiceProvider = Provider<PlantCaptureCommandService>(
 
 final plantCaptureCommandInFlightProvider = StateProvider.autoDispose
     .family<bool, String>((ref, plantId) => false);
+
+final plantCaptureSnapshotRefreshKeyProvider = StateProvider.autoDispose
+    .family<String, String>((ref, plantId) => '');

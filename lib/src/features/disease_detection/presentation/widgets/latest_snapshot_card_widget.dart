@@ -16,11 +16,13 @@ final latestSnapshotUrlProvider = FutureProvider.autoDispose
 class LatestSnapshotCardWidget extends ConsumerWidget {
   final String snapshotUrl;
   final String capturedAt;
+  final String cacheBustKey;
 
   const LatestSnapshotCardWidget({
     super.key,
     required this.snapshotUrl,
     this.capturedAt = '',
+    this.cacheBustKey = '',
   });
 
   @override
@@ -40,6 +42,10 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
               : AsyncValue<String>.data(normalizedPath));
     final resolvedSnapshotUrl =
         effectiveSnapshotAsync.asData?.value.trim() ?? '';
+    final snapshotCacheBustKey = [
+      capturedAt.trim(),
+      cacheBustKey.trim(),
+    ].where((value) => value.isNotEmpty).join('|');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -67,6 +73,7 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
                   imageUrl: resolvedSnapshotUrl,
                   title: 'Ảnh chụp mới nhất',
                   subtitle: capturedAt,
+                  cacheBustKey: snapshotCacheBustKey,
                 ),
           child: Container(
             height: 220.h,
@@ -98,6 +105,7 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
                     return SnapshotImage(
                       imageUrl: resolvedUrl,
                       fit: BoxFit.cover,
+                      cacheBustKey: snapshotCacheBustKey,
                       loadingBuilder: (context) {
                         return const _SnapshotPlaceholder(
                           icon: Icons.image_search_outlined,

@@ -39,7 +39,11 @@ void main() {
       expect(result.snapshotUrl, '/data/user/0/app/cache/upload.jpg');
       expect(result.hasServerSnapshot, isFalse);
       expect(result.capturedAt, '2026-05-11 10:50:00');
-      expect(result.detections, isEmpty);
+      expect(result.latestDetection?.diseaseClass, 'Không phát hiện bệnh');
+      expect(
+        result.latestDetection?.snapshotUrl,
+        '/data/user/0/app/cache/upload.jpg',
+      );
     },
   );
 
@@ -86,4 +90,28 @@ void main() {
       expect(result.latestDetection?.snapshotUrl, '/local/upload.jpg');
     },
   );
+
+  test('parse upload response keeps multiple unique diseases', () {
+    final result = debugParseDiseaseImageUploadResult(
+      {
+        'data': {
+          'annotated_frame_storage_path': 'detections/multi.jpg',
+          'timestamp': '2026-05-11T07:05:35.000000Z',
+          'disease_list': [
+            {'class': 'Lá cà chua bệnh mốc lá', 'confidence': 0.29},
+            {'class': 'Lá cà chua bệnh đốm vi khuẩn', 'confidence': 0.67},
+            {'class': 'Lá cà chua bệnh đốm vi khuẩn', 'confidence': 0.81},
+          ],
+        },
+      },
+      fallbackSnapshotUrl: '/local/upload.jpg',
+      fallbackTime: '2026-05-11 14:05:34',
+    );
+
+    expect(result.detections.map((item) => item.diseaseClass), [
+      'Lá cà chua bệnh mốc lá',
+      'Lá cà chua bệnh đốm vi khuẩn',
+    ]);
+    expect(result.detections.last.confidence, 0.81);
+  });
 }

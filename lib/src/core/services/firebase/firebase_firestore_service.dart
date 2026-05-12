@@ -66,6 +66,38 @@ class FirebaseFirestoreService {
   Future<void> deleteData(String path) async {
     await _db.doc(path).delete();
   }
+
+  Future<void> updateData(String path, Map<String, dynamic> data) async {
+    await _db.doc(path).update(data);
+  }
+
+  Future<int> deleteCollectionDocuments(
+    String path, {
+    int batchSize = 400,
+  }) async {
+    if (batchSize <= 0 || batchSize > 500) {
+      throw ArgumentError('batchSize must be between 1 and 500.');
+    }
+
+    var deletedCount = 0;
+    while (true) {
+      final snapshot = await _db.collection(path).limit(batchSize).get();
+      if (snapshot.docs.isEmpty) {
+        return deletedCount;
+      }
+
+      final batch = _db.batch();
+      for (final document in snapshot.docs) {
+        batch.delete(document.reference);
+      }
+      await batch.commit();
+
+      deletedCount += snapshot.docs.length;
+      if (snapshot.docs.length < batchSize) {
+        return deletedCount;
+      }
+    }
+  }
 }
 
 @riverpod

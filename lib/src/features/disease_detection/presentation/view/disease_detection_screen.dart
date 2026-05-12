@@ -3,6 +3,7 @@ import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
 import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_command_controller.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_history_cleanup_controller.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/disease_image_upload_controller.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/plant_detections_provider.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/capture_history_list_widget.dart';
@@ -82,6 +83,12 @@ class DiseaseDetectionScreen extends BaseView {
     final uploadedImageResult = ref.watch(
       diseaseImageUploadLatestResultProvider(plantId),
     );
+    final isDeletingHistory = ref.watch(
+      captureHistoryCleanupInFlightProvider(plantId),
+    );
+    final captureSnapshotRefreshKey = ref.watch(
+      plantCaptureSnapshotRefreshKeyProvider(plantId),
+    );
 
     return SizedBox.expand(
       child: Stack(
@@ -108,11 +115,12 @@ class DiseaseDetectionScreen extends BaseView {
 
                   final firestoreDetections =
                       detectionsAsyncValue.asData?.value;
-                  var latestDetection =
-                      firestoreDetections?.latestDetection ??
-                      plant.latestDetection;
-                  var history =
-                      (firestoreDetections?.history.isNotEmpty ?? false)
+                  final hasFirestoreDetections =
+                      firestoreDetections?.hasAnyData ?? false;
+                  var latestDetection = hasFirestoreDetections
+                      ? firestoreDetections!.latestDetection
+                      : plant.latestDetection;
+                  var history = hasFirestoreDetections
                       ? firestoreDetections!.history
                       : plant.history;
                   var latestDetections =
@@ -122,19 +130,26 @@ class DiseaseDetectionScreen extends BaseView {
                       : (latestDetection != null
                             ? <DetectionItem>[latestDetection]
                             : history.take(1).toList());
-                  var latestSnapshotUrl =
-                      _firstNonEmptySnapshot([
-                        ...latestDetections,
-                        ...history,
-                      ]) ??
-                      firestoreDetections?.latestSnapshotUrl.trim() ??
-                      latestDetection?.snapshotUrl.trim() ??
-                      '';
-                  var latestCapturedAt =
-                      _firstNonEmptyTime([...latestDetections, ...history]) ??
-                      firestoreDetections?.latestCapturedAt.trim() ??
-                      latestDetection?.time.trim() ??
-                      '';
+                  final firestoreLatestSnapshot =
+                      firestoreDetections?.latestSnapshotUrl.trim() ?? '';
+                  final firestoreLatestCapturedAt =
+                      firestoreDetections?.latestCapturedAt.trim() ?? '';
+                  final displayItems = [...latestDetections, ...history];
+                  var latestSnapshotUrl = firestoreLatestSnapshot.isNotEmpty
+                      ? firestoreLatestSnapshot
+                      : (_firestoreCaptureIsNewerThanItems(
+                              firestoreLatestCapturedAt,
+                              displayItems,
+                            )
+                            ? ''
+                            : (_firstNonEmptySnapshot(displayItems) ??
+                                  latestDetection?.snapshotUrl.trim() ??
+                                  ''));
+                  var latestCapturedAt = firestoreLatestCapturedAt.isNotEmpty
+                      ? firestoreLatestCapturedAt
+                      : (_firstNonEmptyTime(displayItems) ??
+                            latestDetection?.time.trim() ??
+                            '');
                   if (_shouldUseUploadedImageResult(
                     uploadedImageResult,
                     latestSnapshotUrl,
@@ -171,6 +186,7 @@ class DiseaseDetectionScreen extends BaseView {
                         LatestSnapshotCardWidget(
                           snapshotUrl: latestSnapshotUrl,
                           capturedAt: latestCapturedAt,
+                          cacheBustKey: captureSnapshotRefreshKey,
                         ),
                         SizedBox(height: 20.h),
                         CurrentDiseaseCardWidget(
@@ -187,9 +203,47 @@ class DiseaseDetectionScreen extends BaseView {
                           emptyMessage: 'Chưa có dữ liệu bệnh mới nhất',
                         ),
                         SizedBox(height: 24.h),
-                        "Lịch sử chụp".h1Custom(
-                          size: 16.sp,
-                          color: AppColors.textMain,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: "Lịch sử chụp".h1Custom(
+                                size: 16.sp,
+                                color: AppColors.textMain,
+                              ),
+                            ),
+                            if (history.isNotEmpty || hasFirestoreDetections)
+                              TextButton.icon(
+                                onPressed: isDeletingHistory
+                                    ? null
+                                    : () => _handleDeleteAllCaptureHistory(
+                                        context,
+                                        ref,
+                                      ),
+                                icon: isDeletingHistory
+                                    ? SizedBox(
+                                        width: 16.w,
+                                        height: 16.w,
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.delete_sweep_outlined,
+                                        size: 18.sp,
+                                      ),
+                                label: Text(
+                                  isDeletingHistory ? 'Đang xóa' : 'Xóa tất cả',
+                                ),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.error,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 8.w,
+                                    vertical: 4.h,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                          ],
                         ),
                         SizedBox(height: 12.h),
                         CaptureHistoryListWidget(
@@ -363,18 +417,37 @@ class DiseaseDetectionScreen extends BaseView {
       return;
     }
 
+    final previousMarker = _captureResultMarkerFromDetections(
+      ref.read(plantDetectionsProvider(plantId)).asData?.value,
+    );
+
     inFlight.state = true;
     try {
-      await ref
+      ref.read(diseaseImageUploadLatestResultProvider(plantId).notifier).state =
+          null;
+      final requestId = await ref
           .read(plantCaptureCommandServiceProvider)
           .requestCapture(plantId);
-      if (!context.mounted) {
+      ref.read(plantCaptureSnapshotRefreshKeyProvider(plantId).notifier).state =
+          requestId;
+      ref.invalidate(plantDetectionsProvider(plantId));
+      ref.invalidate(plantControllerProvider);
+      final hasNewResult = await _waitForPiCaptureResult(
+        context,
+        ref,
+        plantId: plantId,
+        previousMarker: previousMarker,
+        requestId: requestId,
+      );
+      ref.invalidate(plantControllerProvider);
+      if (!context.mounted || hasNewResult) {
         return;
       }
 
       showDiseaseFeedbackSnackBar(
         context,
-        'Đã gửi lệnh chụp hình cho thiết bị',
+        'Pi xử lý lâu hơn dự kiến, app đã mở lại nút chụp.',
+        isError: true,
       );
     } catch (error) {
       if (!context.mounted) {
@@ -390,6 +463,242 @@ class DiseaseDetectionScreen extends BaseView {
       inFlight.state = false;
     }
   }
+
+  Future<void> _handleDeleteAllCaptureHistory(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Xóa toàn bộ lịch sử chụp?'),
+          content: const Text(
+            'Thao tác này sẽ xóa các lần chụp đang lưu trên Firebase và không thể hoàn tác.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              icon: const Icon(Icons.delete_sweep_outlined),
+              label: const Text('Xóa tất cả'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    final inFlight = ref.read(
+      captureHistoryCleanupInFlightProvider(plantId).notifier,
+    );
+    if (inFlight.state) {
+      return;
+    }
+
+    inFlight.state = true;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await ref
+          .read(captureHistoryCleanupServiceProvider)
+          .deleteAll(plantId);
+      if (!context.mounted) {
+        return;
+      }
+
+      ref.read(diseaseImageUploadLatestResultProvider(plantId).notifier).state =
+          null;
+      ref.invalidate(plantDetectionsProvider(plantId));
+      ref.invalidate(plantControllerProvider);
+
+      final deletedText = result.deletedDocuments > 0
+          ? 'Đã xóa ${result.deletedDocuments} lần chụp khỏi Firebase'
+          : 'Đã dọn lịch sử chụp trên Firebase';
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(buildDiseaseFeedbackSnackBar(deletedText));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          buildDiseaseFeedbackSnackBar(
+            'Xóa lịch sử chụp thất bại: $error',
+            isError: true,
+          ),
+        );
+    } finally {
+      inFlight.state = false;
+    }
+  }
+}
+
+const _piCaptureResultWaitTimeout = Duration(seconds: 45);
+const _piCaptureResultPollInterval = Duration(milliseconds: 900);
+const _piCaptureSnapshotRefreshPolls = 4;
+const _piCaptureFirestoreRefreshPolls = 7;
+
+Future<bool> _waitForPiCaptureResult(
+  BuildContext context,
+  WidgetRef ref, {
+  required String plantId,
+  required _CaptureResultMarker previousMarker,
+  required String requestId,
+}) async {
+  final stopwatch = Stopwatch()..start();
+  var polls = 0;
+
+  while (stopwatch.elapsed < _piCaptureResultWaitTimeout) {
+    await Future.delayed(_piCaptureResultPollInterval);
+    if (!context.mounted) {
+      return false;
+    }
+
+    polls += 1;
+    final currentMarker = _captureResultMarkerFromDetections(
+      ref.read(plantDetectionsProvider(plantId)).asData?.value,
+    );
+    if (currentMarker.isNewerThan(previousMarker)) {
+      ref.read(plantCaptureSnapshotRefreshKeyProvider(plantId).notifier).state =
+          '${requestId}_${DateTime.now().millisecondsSinceEpoch}';
+      return true;
+    }
+
+    if (polls % _piCaptureSnapshotRefreshPolls == 0) {
+      ref.read(plantCaptureSnapshotRefreshKeyProvider(plantId).notifier).state =
+          '${requestId}_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    if (polls % _piCaptureFirestoreRefreshPolls == 0) {
+      ref.invalidate(plantDetectionsProvider(plantId));
+    }
+  }
+
+  return false;
+}
+
+class _CaptureResultMarker {
+  const _CaptureResultMarker({
+    required this.capturedAt,
+    required this.snapshotKey,
+    required this.historyLength,
+    required this.latestFingerprint,
+    required this.historyFingerprint,
+  });
+
+  final String capturedAt;
+  final String snapshotKey;
+  final int historyLength;
+  final String latestFingerprint;
+  final String historyFingerprint;
+
+  bool get hasData =>
+      capturedAt.isNotEmpty ||
+      snapshotKey.isNotEmpty ||
+      latestFingerprint.isNotEmpty ||
+      historyFingerprint.isNotEmpty ||
+      historyLength > 0;
+
+  bool isNewerThan(_CaptureResultMarker previous) {
+    if (!hasData) {
+      return false;
+    }
+    if (!previous.hasData) {
+      return true;
+    }
+    if (_markerTimeIsNewer(capturedAt, previous.capturedAt)) {
+      return true;
+    }
+    if (historyLength > previous.historyLength) {
+      return true;
+    }
+    if (snapshotKey.isNotEmpty && snapshotKey != previous.snapshotKey) {
+      return true;
+    }
+    if (latestFingerprint.isNotEmpty &&
+        latestFingerprint != previous.latestFingerprint) {
+      return true;
+    }
+    return historyFingerprint.isNotEmpty &&
+        historyFingerprint != previous.historyFingerprint &&
+        historyLength >= previous.historyLength;
+  }
+}
+
+_CaptureResultMarker _captureResultMarkerFromDetections(
+  PlantDetectionsData? detections,
+) {
+  if (detections == null) {
+    return const _CaptureResultMarker(
+      capturedAt: '',
+      snapshotKey: '',
+      historyLength: 0,
+      latestFingerprint: '',
+      historyFingerprint: '',
+    );
+  }
+
+  final latestItems = detections.latestDetections.isNotEmpty
+      ? detections.latestDetections
+      : <DetectionItem>[
+          if (detections.latestDetection != null) detections.latestDetection!,
+        ];
+  final allItems = <DetectionItem>[...latestItems, ...detections.history];
+  final capturedAt = detections.latestCapturedAt.trim().isNotEmpty
+      ? detections.latestCapturedAt.trim()
+      : (_firstNonEmptyTime(allItems) ?? '');
+  final snapshotUrl = detections.latestSnapshotUrl.trim().isNotEmpty
+      ? detections.latestSnapshotUrl.trim()
+      : (_firstNonEmptySnapshot(allItems) ?? '');
+
+  return _CaptureResultMarker(
+    capturedAt: capturedAt,
+    snapshotKey: _normalizeSnapshotKey(snapshotUrl),
+    historyLength: detections.history.length,
+    latestFingerprint: latestItems.take(4).map(_detectionMarkerKey).join('||'),
+    historyFingerprint: detections.history
+        .take(4)
+        .map(_detectionMarkerKey)
+        .join('||'),
+  );
+}
+
+String _detectionMarkerKey(DetectionItem item) {
+  return [
+    item.diseaseClass.trim().toLowerCase(),
+    item.time.trim(),
+    _normalizeSnapshotKey(item.snapshotUrl),
+    item.sourceDocumentPath.trim(),
+    item.confidence.toStringAsFixed(4),
+  ].join('|');
+}
+
+bool _markerTimeIsNewer(String current, String previous) {
+  final currentTime = current.trim();
+  final previousTime = previous.trim();
+  if (currentTime.isEmpty) {
+    return false;
+  }
+  if (previousTime.isEmpty) {
+    return true;
+  }
+
+  final currentDate = _tryParseDetectionTime(currentTime);
+  final previousDate = _tryParseDetectionTime(previousTime);
+  if (currentDate != null && previousDate != null) {
+    return currentDate.isAfter(previousDate);
+  }
+
+  return currentTime != previousTime;
 }
 
 class _ImageSourceTile extends StatelessWidget {
@@ -494,7 +803,9 @@ class _BottomActionButtons extends ConsumerWidget {
                 tooltip: 'Chụp hoặc chọn ảnh',
                 backgroundColor: AppColors.primary,
                 elevation: 4,
-                onPressed: isUploadingImage ? null : onPhoneImagePressed,
+                onPressed: isUploadingImage || isSendingCapture
+                    ? null
+                    : onPhoneImagePressed,
                 child: isUploadingImage
                     ? SizedBox(
                         width: 24.w,
@@ -545,7 +856,7 @@ class _BottomActionButtons extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(30.r),
                 ),
                 elevation: 4,
-                onPressed: onAiPressed,
+                onPressed: isSendingCapture ? null : onAiPressed,
                 child: Icon(
                   Icons.auto_awesome,
                   color: Colors.white,
@@ -573,6 +884,20 @@ bool _shouldUseUploadedImageResult(
   final uploadedSnapshotUrl = uploadResult.snapshotUrl.trim();
   final remoteSnapshot = remoteSnapshotUrl.trim();
   final uploadDetections = uploadResult.detections;
+  final hasUploadData =
+      uploadedSnapshotUrl.isNotEmpty || uploadDetections.isNotEmpty;
+  final hasRemoteData =
+      remoteSnapshot.isNotEmpty ||
+      remoteCapturedAt.trim().isNotEmpty ||
+      remoteLatestDetections.isNotEmpty;
+
+  if (!hasUploadData) {
+    return false;
+  }
+
+  if (!hasRemoteData) {
+    return true;
+  }
 
   if (uploadedSnapshotUrl.isNotEmpty &&
       _normalizeSnapshotKey(uploadedSnapshotUrl) ==
@@ -580,8 +905,12 @@ bool _shouldUseUploadedImageResult(
     return false;
   }
 
-  if (uploadResult.hasServerSnapshot) {
-    return uploadedSnapshotUrl.isNotEmpty || uploadDetections.isNotEmpty;
+  final uploadedTime = _tryParseDetectionTime(uploadResult.capturedAt);
+  final remoteTime =
+      _newestDetectionTime(remoteLatestDetections) ??
+      _tryParseDetectionTime(remoteCapturedAt);
+  if (uploadedTime != null && remoteTime != null) {
+    return remoteTime.isBefore(uploadedTime);
   }
 
   if (uploadDetections.isEmpty) {
@@ -597,20 +926,8 @@ bool _shouldUseUploadedImageResult(
     return false;
   }
 
-  final uploadedTime = _tryParseDetectionTime(uploadResult.capturedAt);
-  final remoteTime = _tryParseDetectionTime(remoteCapturedAt);
-  if (uploadedSnapshotUrl.isEmpty &&
-      remoteSnapshot.isNotEmpty &&
-      uploadedTime != null &&
-      remoteTime != null &&
-      !remoteTime.isBefore(uploadedTime)) {
-    return false;
-  }
-
-  if (uploadedTime != null &&
-      remoteTime != null &&
-      remoteTime.isAfter(uploadedTime)) {
-    return false;
+  if (uploadResult.hasServerSnapshot) {
+    return true;
   }
 
   return true;
@@ -626,7 +943,8 @@ bool _shouldUseUploadedSnapshot(DiseaseImageUploadResult uploadResult) {
     return true;
   }
 
-  return uploadResult.detections.isEmpty;
+  return uploadResult.detections.isEmpty ||
+      uploadResult.detections.every(_isNoDiseaseDetection);
 }
 
 bool _remoteSnapshotLooksLikeUploadedResult(
@@ -661,6 +979,17 @@ Set<String> _diseaseKeys(List<DetectionItem> items) {
       if (item.diseaseClass.trim().isNotEmpty)
         item.diseaseClass.trim().toLowerCase(),
   };
+}
+
+bool _isNoDiseaseDetection(DetectionItem item) {
+  final normalized = item.diseaseClass
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ');
+  return normalized == 'khong phat hien benh' ||
+      normalized == 'không phát hiện bệnh' ||
+      normalized == 'no disease detected';
 }
 
 DateTime? _newestDetectionTime(List<DetectionItem> items) {
@@ -701,6 +1030,31 @@ String? _firstNonEmptyTime(Iterable<DetectionItem> items) {
   }
 
   return null;
+}
+
+bool _firestoreCaptureIsNewerThanItems(
+  String firestoreCapturedAt,
+  List<DetectionItem> items,
+) {
+  final firestoreTime = firestoreCapturedAt.trim();
+  if (firestoreTime.isEmpty || items.isEmpty) {
+    return false;
+  }
+
+  final newestItemTime =
+      _newestDetectionTime(items) ??
+      _tryParseDetectionTime(_firstNonEmptyTime(items) ?? '');
+  final firestoreDate = _tryParseDetectionTime(firestoreTime);
+  if (firestoreDate != null && newestItemTime != null) {
+    return firestoreDate.isAfter(newestItemTime);
+  }
+
+  final itemTime = _firstNonEmptyTime(items);
+  if (itemTime == null || itemTime.trim().isEmpty) {
+    return false;
+  }
+
+  return firestoreTime.compareTo(itemTime) > 0;
 }
 
 List<DetectionItem> _uniqueDetectionsByDisease(List<DetectionItem> items) {

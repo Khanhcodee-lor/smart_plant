@@ -10,6 +10,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 class SnapshotImage extends StatelessWidget {
   final String imageUrl;
   final BoxFit fit;
+  final String cacheBustKey;
   final Widget Function(BuildContext context)? loadingBuilder;
   final Widget Function(BuildContext context)? errorBuilder;
 
@@ -17,6 +18,7 @@ class SnapshotImage extends StatelessWidget {
     super.key,
     required this.imageUrl,
     this.fit = BoxFit.cover,
+    this.cacheBustKey = '',
     this.loadingBuilder,
     this.errorBuilder,
   });
@@ -45,8 +47,10 @@ class SnapshotImage extends StatelessWidget {
       );
     }
 
+    final networkUrl = _networkUrlWithCacheBust(normalizedUrl, cacheBustKey);
     return Image.network(
-      normalizedUrl,
+      networkUrl,
+      key: ValueKey(networkUrl),
       fit: fit,
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) {
@@ -69,6 +73,27 @@ class SnapshotImage extends StatelessWidget {
           ),
         );
   }
+}
+
+String _networkUrlWithCacheBust(String imageUrl, String cacheBustKey) {
+  final normalizedKey = cacheBustKey.trim();
+  if (normalizedKey.isEmpty) {
+    return imageUrl;
+  }
+
+  final uri = Uri.tryParse(imageUrl);
+  if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+    return imageUrl;
+  }
+
+  return uri
+      .replace(
+        queryParameters: {
+          ...uri.queryParameters,
+          '_app_cache_bust': normalizedKey,
+        },
+      )
+      .toString();
 }
 
 bool isLocalSnapshotImagePath(String imageUrl) {
@@ -131,6 +156,7 @@ void showSnapshotImageViewer(
   required String imageUrl,
   String title = 'Ảnh bệnh',
   String subtitle = '',
+  String cacheBustKey = '',
 }) {
   final normalizedUrl = imageUrl.trim();
   if (normalizedUrl.isEmpty) {
@@ -180,6 +206,7 @@ void showSnapshotImageViewer(
                     child: SnapshotImage(
                       imageUrl: normalizedUrl,
                       fit: BoxFit.contain,
+                      cacheBustKey: cacheBustKey,
                       loadingBuilder: (context) {
                         return CircularProgressIndicator(
                           color: AppColors.accent,

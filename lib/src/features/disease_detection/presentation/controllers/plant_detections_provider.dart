@@ -7,6 +7,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+const _noDiseaseDetectedLabel = 'Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh';
+
 class PlantDetectionsData {
   const PlantDetectionsData({
     this.latestDetection,
@@ -28,6 +30,13 @@ class PlantDetectionsData {
       history.isNotEmpty ||
       latestSnapshotUrl.trim().isNotEmpty ||
       latestCapturedAt.trim().isNotEmpty;
+}
+
+class _CaptureMetadata {
+  const _CaptureMetadata({required this.capturedAt, required this.snapshotUrl});
+
+  final String capturedAt;
+  final String snapshotUrl;
 }
 
 final plantDetectionsProvider = StreamProvider.autoDispose
@@ -154,36 +163,28 @@ PlantDetectionsData _parseDetectionsFromDocument(Map<String, dynamic>? data) {
       normalized['latest_detection_at'],
       normalized['latestDetectionAt'],
       normalized['latest_detected_at'],
+      normalized['captured_at'],
+      normalized['capturedAt'],
+      normalized['capture_time'],
+      normalized['captureTime'],
+      normalized['processed_at'],
+      normalized['processedAt'],
+      normalized['uploaded_at'],
+      normalized['uploadedAt'],
       normalized['annotated_frame_local_saved_at'],
       normalized['firestore_saved_at'],
       normalized['received_at'],
       normalized['timestamp'],
+      _dateTimeFromRequestId(normalized['request_id']),
+      _dateTimeFromRequestId(normalized['requestId']),
       normalized['updated_at'],
       normalized['updatedAt'],
     ]),
   );
-  final safeImageUrl = _safeImageUrlCandidate(normalized['image_url']);
-  final safeImageUrlLegacy = _safeImageUrlCandidate(normalized['imageUrl']);
-  final latestSnapshotUrl =
-      _firstNonEmptyString([
-        normalized['annotated_frame_storage_path'],
-        normalized['latest_annotated_frame_storage_path'],
-        normalized['latest_snapshot_path'],
-        normalized['annotated_frame_url'],
-        normalized['latest_annotated_frame_url'],
-        normalized['latest_snapshot_url'],
-        normalized['annotated_image_url'],
-        normalized['annotatedImageUrl'],
-        normalized['processed_image_url'],
-        normalized['processedImageUrl'],
-        normalized['output_image_url'],
-        normalized['outputImageUrl'],
-        normalized['annotated_image'],
-        normalized['image'],
-        safeImageUrl,
-        safeImageUrlLegacy,
-      ]) ??
-      '';
+  final latestSnapshotUrl = _snapshotUrlFromMap(
+    normalized,
+    fallbackSnapshotUrl: '',
+  );
 
   final latestItems = _extractFirstNonEmptyDetectionItemsFromCandidates(
     _detectionCandidateSources(normalized),
@@ -219,6 +220,9 @@ PlantDetectionsData _parseDetectionsFromCollection(
 ) {
   final history = <DetectionItem>[];
   var latestGroup = const <DetectionItem>[];
+  var latestSnapshotUrl = '';
+  var latestCapturedAt = '';
+  var latestMetadataIsStandalone = false;
 
   for (final document in documents) {
     final normalized = Map<dynamic, dynamic>.from(document.data);
@@ -227,43 +231,48 @@ PlantDetectionsData _parseDetectionsFromCollection(
       _firstNonNull([
         normalized['annotated_frame_local_saved_at'],
         normalized['latest_detection_at'],
+        normalized['latestDetectionAt'],
         normalized['detected_at'],
         normalized['detectedAt'],
+        normalized['captured_at'],
+        normalized['capturedAt'],
+        normalized['capture_time'],
+        normalized['captureTime'],
+        normalized['processed_at'],
+        normalized['processedAt'],
+        normalized['uploaded_at'],
+        normalized['uploadedAt'],
         normalized['created_at'],
         normalized['createdAt'],
         normalized['saved_at'],
         normalized['savedAt'],
         normalized['firestore_saved_at'],
         normalized['received_at'],
+        normalized['updated_at'],
+        normalized['updatedAt'],
         normalized['time'],
         normalized['timestamp'],
+        _dateTimeFromRequestId(normalized['request_id']),
+        _dateTimeFromRequestId(normalized['requestId']),
       ]),
     );
-    final safeImageUrl = _safeImageUrlCandidate(normalized['image_url']);
-    final safeImageUrlLegacy = _safeImageUrlCandidate(normalized['imageUrl']);
-    final snapshotUrl =
-        _firstNonEmptyString([
-          normalized['annotated_frame_storage_path'],
-          normalized['frame_storage_path'],
-          normalized['annotatedFrameStoragePath'],
-          normalized['snapshot_path'],
-          normalized['annotated_frame_url'],
-          normalized['frame_url'],
-          normalized['annotatedFrameUrl'],
-          normalized['snapshot'],
-          normalized['snapshotUrl'],
-          normalized['annotated_image_url'],
-          normalized['annotatedImageUrl'],
-          normalized['processed_image_url'],
-          normalized['processedImageUrl'],
-          normalized['output_image_url'],
-          normalized['outputImageUrl'],
-          normalized['annotated_image'],
-          normalized['image'],
-          safeImageUrl,
-          safeImageUrlLegacy,
-        ]) ??
-        '';
+    final snapshotUrl = _snapshotUrlFromMap(
+      normalized,
+      fallbackSnapshotUrl: '',
+    );
+
+    void considerDocumentMetadata({required bool isStandalone}) {
+      if (_isCaptureMetadataNewer(
+        candidateTime: detectedTime,
+        candidateSnapshotUrl: snapshotUrl,
+        currentTime: latestCapturedAt,
+        currentSnapshotUrl: latestSnapshotUrl,
+      )) {
+        latestCapturedAt = detectedTime;
+        latestSnapshotUrl = snapshotUrl;
+        latestMetadataIsStandalone = isStandalone;
+      }
+    }
 
     final nestedItems = _extractFirstNonEmptyDetectionItemsFromCandidates(
       _detectionCandidateSources(normalized),
@@ -277,6 +286,7 @@ PlantDetectionsData _parseDetectionsFromCollection(
       if (_isCandidateGroupNewer(normalizedItems, latestGroup)) {
         latestGroup = normalizedItems;
       }
+      considerDocumentMetadata(isStandalone: false);
       continue;
     }
 
@@ -292,13 +302,43 @@ PlantDetectionsData _parseDetectionsFromCollection(
       if (_isCandidateGroupNewer(directGroup, latestGroup)) {
         latestGroup = directGroup;
       }
+      considerDocumentMetadata(isStandalone: false);
+      continue;
     }
+
+    final noDiseaseDetection = _toNoDiseaseDetectionItem(
+      fallbackTime: detectedTime,
+      fallbackSnapshotUrl: snapshotUrl,
+      sourceDocumentPath: sourceDocumentPath,
+    );
+    if (noDiseaseDetection != null) {
+      history.add(noDiseaseDetection);
+      final noDiseaseGroup = <DetectionItem>[noDiseaseDetection];
+      if (_isCandidateGroupNewer(noDiseaseGroup, latestGroup)) {
+        latestGroup = noDiseaseGroup;
+      }
+      considerDocumentMetadata(isStandalone: false);
+      continue;
+    }
+
+    considerDocumentMetadata(isStandalone: true);
   }
 
+  final effectiveLatestGroup =
+      latestMetadataIsStandalone &&
+          _isStandaloneMetadataNewerThanDetections(
+            latestCapturedAt,
+            latestGroup,
+          )
+      ? const <DetectionItem>[]
+      : latestGroup;
+
   return _buildDetections(
-    latestGroup.isNotEmpty ? latestGroup.first : null,
+    effectiveLatestGroup.isNotEmpty ? effectiveLatestGroup.first : null,
     history,
-    latestDetections: latestGroup,
+    latestDetections: effectiveLatestGroup,
+    latestSnapshotUrl: latestSnapshotUrl,
+    latestCapturedAt: latestCapturedAt,
   );
 }
 
@@ -332,28 +372,42 @@ PlantDetectionsData _buildDetections(
     ...hydratedHistory,
     ...normalizedLatest,
   ]);
-  final effectiveLatest = normalizedLatest.isNotEmpty
-      ? normalizedLatest.first
-      : (mergedHistory.isNotEmpty
-            ? mergedHistory.first
-            : hydratedLatestDetection);
-  final effectiveLatestDetections = normalizedLatest.isNotEmpty
-      ? normalizedLatest
-      : (effectiveLatest == null
-            ? const <DetectionItem>[]
-            : <DetectionItem>[effectiveLatest]);
-  final effectiveSnapshotUrl =
-      _firstNonEmptyDetectionSnapshot([
-        ...effectiveLatestDetections,
-        ...mergedHistory,
-      ]) ??
-      latestSnapshotUrl;
-  final effectiveCapturedAt =
-      _firstNonEmptyDetectionTime([
-        ...effectiveLatestDetections,
-        ...mergedHistory,
-      ]) ??
-      latestCapturedAt;
+  final metadataIsStandaloneLatest =
+      hydratedLatestDetection == null &&
+      hydratedLatest.isEmpty &&
+      _hasCaptureMetadata(
+        latestCapturedAt: latestCapturedAt,
+        latestSnapshotUrl: latestSnapshotUrl,
+      ) &&
+      _isStandaloneMetadataNewerThanDetections(latestCapturedAt, mergedHistory);
+  final effectiveLatest = metadataIsStandaloneLatest
+      ? null
+      : (normalizedLatest.isNotEmpty
+            ? normalizedLatest.first
+            : (mergedHistory.isNotEmpty
+                  ? mergedHistory.first
+                  : hydratedLatestDetection));
+  final effectiveLatestDetections = metadataIsStandaloneLatest
+      ? const <DetectionItem>[]
+      : (normalizedLatest.isNotEmpty
+            ? normalizedLatest
+            : (effectiveLatest == null
+                  ? const <DetectionItem>[]
+                  : <DetectionItem>[effectiveLatest]));
+  final effectiveSnapshotUrl = metadataIsStandaloneLatest
+      ? latestSnapshotUrl
+      : (_firstNonEmptyDetectionSnapshot([
+              ...effectiveLatestDetections,
+              ...mergedHistory,
+            ]) ??
+            latestSnapshotUrl);
+  final effectiveCapturedAt = metadataIsStandaloneLatest
+      ? latestCapturedAt
+      : (_firstNonEmptyDetectionTime([
+              ...effectiveLatestDetections,
+              ...mergedHistory,
+            ]) ??
+            latestCapturedAt);
 
   return PlantDetectionsData(
     latestDetection: effectiveLatest,
@@ -383,6 +437,25 @@ PlantDetectionsData _mergeDetections(
       _isCandidateGroupNewer(secondaryLatest, primaryLatest)
       ? secondaryLatest
       : primaryLatest;
+  final standaloneMetadata = _newerStandaloneMetadata(
+    primary,
+    secondary,
+    latestDetections,
+  );
+  if (standaloneMetadata != null) {
+    return _buildDetections(
+      null,
+      [
+        ...primary.history,
+        ...secondary.history,
+        if (primary.latestDetection != null) primary.latestDetection!,
+        if (secondary.latestDetection != null) secondary.latestDetection!,
+      ],
+      latestSnapshotUrl: standaloneMetadata.snapshotUrl,
+      latestCapturedAt: standaloneMetadata.capturedAt,
+    );
+  }
+
   final latestDetection = latestDetections.isNotEmpty
       ? latestDetections.first
       : (secondary.latestDetection ?? primary.latestDetection);
@@ -563,23 +636,7 @@ DetectionItem? _toDetectionItem(
     return null;
   }
 
-  final diseaseClass = _firstNonEmptyString([
-    data['class_name_en'],
-    data['class_name'],
-    data['class'],
-    data['class_en'],
-    data['label'],
-    data['label_en'],
-    data['disease'],
-    data['disease_en'],
-    data['diseaseClass'],
-    data['disease_name_en'],
-    data['disease_name'],
-    _firstStringFromArrayLike(data['all_classes_detected']),
-    _firstStringFromArrayLike(data['all_classes_detected_en']),
-    data['prediction'],
-    data['result'],
-  ]);
+  final diseaseClass = _diseaseClassFromMap(data);
   final confidence = _normalizeConfidence(
     _firstNonNull([
       data['confidence'],
@@ -597,41 +654,34 @@ DetectionItem? _toDetectionItem(
     _firstNonNull([
       data['annotated_frame_local_saved_at'],
       data['latest_detection_at'],
+      data['latestDetectionAt'],
       data['detected_at'],
       data['detectedAt'],
+      data['captured_at'],
+      data['capturedAt'],
+      data['capture_time'],
+      data['captureTime'],
+      data['processed_at'],
+      data['processedAt'],
+      data['uploaded_at'],
+      data['uploadedAt'],
       data['created_at'],
       data['createdAt'],
       data['saved_at'],
       data['savedAt'],
+      data['firestore_saved_at'],
+      data['received_at'],
       data['time'],
       data['timestamp'],
+      _dateTimeFromRequestId(data['request_id']),
+      _dateTimeFromRequestId(data['requestId']),
       fallbackTime,
     ]),
   );
-  final snapshotUrl =
-      _firstNonEmptyString([
-        data['annotated_frame_storage_path'],
-        data['frame_storage_path'],
-        data['annotatedFrameStoragePath'],
-        data['snapshot_path'],
-        data['annotated_frame_url'],
-        data['frame_url'],
-        data['annotatedFrameUrl'],
-        data['snapshot'],
-        data['snapshotUrl'],
-        data['annotated_image_url'],
-        data['annotatedImageUrl'],
-        data['processed_image_url'],
-        data['processedImageUrl'],
-        data['output_image_url'],
-        data['outputImageUrl'],
-        data['annotated_image'],
-        data['image'],
-        _safeImageUrlCandidate(data['image_url']),
-        _safeImageUrlCandidate(data['imageUrl']),
-        fallbackSnapshotUrl,
-      ]) ??
-      '';
+  final snapshotUrl = _snapshotUrlFromMap(
+    data,
+    fallbackSnapshotUrl: fallbackSnapshotUrl,
+  );
 
   if (diseaseClass == null) {
     return null;
@@ -646,9 +696,40 @@ DetectionItem? _toDetectionItem(
   );
 }
 
+DetectionItem? _toNoDiseaseDetectionItem({
+  required String fallbackTime,
+  required String fallbackSnapshotUrl,
+  required String sourceDocumentPath,
+}) {
+  if (fallbackTime.trim().isEmpty && fallbackSnapshotUrl.trim().isEmpty) {
+    return null;
+  }
+
+  return DetectionItem(
+    diseaseClass: _noDiseaseDetectedLabel,
+    confidence: 0,
+    time: fallbackTime,
+    snapshotUrl: fallbackSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
+  );
+}
+
 List<String> _detectionDocumentPaths(String plantId) {
   return [
-    for (final id in _detectionIds(plantId)) ...['plant/$id', 'plants/$id'],
+    for (final id in _detectionIds(plantId)) ...[
+      'plant/$id',
+      'plants/$id',
+      'plant/$id/detections/latest',
+      'plants/$id/detections/latest',
+      'plant/$id/detections/current',
+      'plants/$id/detections/current',
+      'plant/$id/detection/latest',
+      'plants/$id/detection/latest',
+      'plant/$id/detection/current',
+      'plants/$id/detection/current',
+      'plant/$id/latest_detection/current',
+      'plants/$id/latest_detection/current',
+    ],
   ];
 }
 
@@ -657,6 +738,12 @@ List<String> _detectionCollectionPaths(String plantId) {
     for (final id in _detectionIds(plantId)) ...[
       'plant/$id/detections',
       'plants/$id/detections',
+      'plant/$id/detection',
+      'plants/$id/detection',
+      'plant/$id/disease_detections',
+      'plants/$id/disease_detections',
+      'plant/$id/diseaseDetections',
+      'plants/$id/diseaseDetections',
     ],
   ];
 }
@@ -747,19 +834,27 @@ List<DetectionItem> _hydrateDetections(
 
 List<dynamic> _detectionCandidateSources(Map<dynamic, dynamic> data) {
   return [
+    data['latest'],
+    data['latestDetection'],
+    data['currentDetection'],
     data['data'],
-    data['latest_diseases'],
-    data['latestDiseases'],
+    data['latest_objects'],
+    data['latestObjects'],
+    data['detected_objects'],
+    data['detectedObjects'],
     data['disease_list_unique_top'],
     data['disease_list'],
     data['disease_objects'],
     data['objects'],
     data['detections'],
     data['diseases'],
+    data['latest_diseases'],
+    data['latestDiseases'],
     data['diseaseDetection'],
     data['detection'],
     data['predictions'],
     data['results'],
+    data['all_classes_detected_vi'],
     data['all_classes_detected'],
     data['all_classes_detected_en'],
     data['history'],
@@ -779,6 +874,14 @@ String _detectionTimeFromMap(
       data['latest_detected_at'],
       data['detected_at'],
       data['detectedAt'],
+      data['captured_at'],
+      data['capturedAt'],
+      data['capture_time'],
+      data['captureTime'],
+      data['processed_at'],
+      data['processedAt'],
+      data['uploaded_at'],
+      data['uploadedAt'],
       data['created_at'],
       data['createdAt'],
       data['saved_at'],
@@ -789,6 +892,8 @@ String _detectionTimeFromMap(
       data['updatedAt'],
       data['time'],
       data['timestamp'],
+      _dateTimeFromRequestId(data['request_id']),
+      _dateTimeFromRequestId(data['requestId']),
       fallbackTime,
     ]),
   );
@@ -799,6 +904,14 @@ String _snapshotUrlFromMap(
   required String fallbackSnapshotUrl,
 }) {
   return _firstNonEmptyString([
+        _inlineImageDataCandidate(data['annotated_frame_base64']),
+        _inlineImageDataCandidate(data['annotated_image_base64']),
+        _inlineImageDataCandidate(data['processed_frame_base64']),
+        _inlineImageDataCandidate(data['processed_image_base64']),
+        _inlineImageDataCandidate(data['output_frame_base64']),
+        _inlineImageDataCandidate(data['output_image_base64']),
+        _inlineImageDataCandidate(data['result_frame_base64']),
+        _inlineImageDataCandidate(data['result_image_base64']),
         data['annotated_frame_storage_path'],
         data['latest_annotated_frame_storage_path'],
         data['frame_storage_path'],
@@ -810,15 +923,46 @@ String _snapshotUrlFromMap(
         data['frame_url'],
         data['annotatedFrameUrl'],
         data['latest_snapshot_url'],
+        data['annotated_frame'],
+        data['annotatedFrame'],
+        data['processed_frame_storage_path'],
+        data['processedFrameStoragePath'],
+        data['processed_frame_url'],
+        data['processedFrameUrl'],
+        data['processed_frame'],
+        data['processedFrame'],
+        data['processed_image_url'],
+        data['processedImageUrl'],
+        data['processed_image'],
+        data['processedImage'],
+        data['output_frame_storage_path'],
+        data['outputFrameStoragePath'],
+        data['output_frame_url'],
+        data['outputFrameUrl'],
+        data['output_frame'],
+        data['outputFrame'],
+        data['output_image_url'],
+        data['outputImageUrl'],
+        data['output_image'],
+        data['outputImage'],
+        data['result_frame_storage_path'],
+        data['resultFrameStoragePath'],
+        data['result_image_storage_path'],
+        data['resultImageStoragePath'],
+        data['result_frame_url'],
+        data['resultFrameUrl'],
+        data['result_image_url'],
+        data['resultImageUrl'],
+        data['result_frame'],
+        data['resultFrame'],
+        data['result_image'],
+        data['resultImage'],
         data['snapshot'],
         data['snapshotUrl'],
         data['annotated_image_url'],
         data['annotatedImageUrl'],
-        data['processed_image_url'],
-        data['processedImageUrl'],
-        data['output_image_url'],
-        data['outputImageUrl'],
         data['annotated_image'],
+        data['annotatedImage'],
         data['image'],
         _safeImageUrlCandidate(data['image_url']),
         _safeImageUrlCandidate(data['imageUrl']),
@@ -831,22 +975,42 @@ List<DetectionItem> _dedupeDetections(List<DetectionItem> items) {
   final deduped = <String, DetectionItem>{};
 
   for (final item in items) {
-    final key = [
-      item.diseaseClass,
-      item.confidence.toStringAsFixed(4),
-      item.time,
-      item.snapshotUrl,
-    ].join('|');
+    final key = _detectionDedupeKey(item);
 
     final existing = deduped[key];
-    if (existing == null ||
-        (existing.sourceDocumentPath.trim().isEmpty &&
-            item.sourceDocumentPath.trim().isNotEmpty)) {
+    if (existing == null || _shouldReplaceDedupedDetection(item, existing)) {
       deduped[key] = item;
     }
   }
 
   return deduped.values.toList();
+}
+
+String _detectionDedupeKey(DetectionItem item) {
+  final diseaseClass = item.diseaseClass.trim().toLowerCase();
+  if (item.time.trim().isNotEmpty) {
+    return [diseaseClass, item.time].join('|');
+  }
+
+  return [diseaseClass, item.snapshotUrl, item.sourceDocumentPath].join('|');
+}
+
+bool _shouldReplaceDedupedDetection(
+  DetectionItem candidate,
+  DetectionItem current,
+) {
+  if (candidate.confidence != current.confidence) {
+    return candidate.confidence > current.confidence;
+  }
+
+  final candidateHasSnapshot = candidate.snapshotUrl.trim().isNotEmpty;
+  final currentHasSnapshot = current.snapshotUrl.trim().isNotEmpty;
+  if (candidateHasSnapshot != currentHasSnapshot) {
+    return candidateHasSnapshot;
+  }
+
+  return current.sourceDocumentPath.trim().isEmpty &&
+      candidate.sourceDocumentPath.trim().isNotEmpty;
 }
 
 List<DetectionItem> _normalizeDetectionList(List<DetectionItem> items) {
@@ -867,6 +1031,131 @@ bool _isCandidateGroupNewer(
   }
 
   return _compareDetectionByNewest(candidate.first, current.first) < 0;
+}
+
+_CaptureMetadata? _newerStandaloneMetadata(
+  PlantDetectionsData primary,
+  PlantDetectionsData secondary,
+  List<DetectionItem> currentLatestDetections,
+) {
+  _CaptureMetadata? newest;
+  for (final data in [primary, secondary]) {
+    final dataLatest = data.latestDetections.isNotEmpty
+        ? data.latestDetections
+        : <DetectionItem>[
+            if (data.latestDetection != null) data.latestDetection!,
+          ];
+    if (dataLatest.isNotEmpty) {
+      continue;
+    }
+
+    if (!_hasCaptureMetadata(
+      latestCapturedAt: data.latestCapturedAt,
+      latestSnapshotUrl: data.latestSnapshotUrl,
+    )) {
+      continue;
+    }
+
+    if (!_isStandaloneMetadataNewerThanDetections(
+      data.latestCapturedAt,
+      currentLatestDetections,
+    )) {
+      continue;
+    }
+
+    final candidate = _CaptureMetadata(
+      capturedAt: data.latestCapturedAt,
+      snapshotUrl: data.latestSnapshotUrl,
+    );
+    if (newest == null ||
+        _isCaptureMetadataNewer(
+          candidateTime: candidate.capturedAt,
+          candidateSnapshotUrl: candidate.snapshotUrl,
+          currentTime: newest.capturedAt,
+          currentSnapshotUrl: newest.snapshotUrl,
+        )) {
+      newest = candidate;
+    }
+  }
+
+  return newest;
+}
+
+bool _hasCaptureMetadata({
+  required String latestCapturedAt,
+  required String latestSnapshotUrl,
+}) {
+  return latestCapturedAt.trim().isNotEmpty ||
+      latestSnapshotUrl.trim().isNotEmpty;
+}
+
+bool _isStandaloneMetadataNewerThanDetections(
+  String metadataTime,
+  List<DetectionItem> detections,
+) {
+  if (detections.isEmpty) {
+    return metadataTime.trim().isNotEmpty;
+  }
+
+  final newestDetectionTime = _firstNonEmptyDetectionTime(detections) ?? '';
+  if (metadataTime.trim().isEmpty || newestDetectionTime.trim().isEmpty) {
+    return false;
+  }
+
+  final metadataDate = _tryParseDateTime(metadataTime);
+  final detectionDate = _tryParseDateTime(newestDetectionTime);
+  if (metadataDate != null && detectionDate != null) {
+    return metadataDate.isAfter(detectionDate);
+  }
+
+  return metadataTime.compareTo(newestDetectionTime) > 0;
+}
+
+bool _isCaptureMetadataNewer({
+  required String candidateTime,
+  required String candidateSnapshotUrl,
+  required String currentTime,
+  required String currentSnapshotUrl,
+}) {
+  final hasCandidate =
+      candidateTime.trim().isNotEmpty || candidateSnapshotUrl.trim().isNotEmpty;
+  if (!hasCandidate) {
+    return false;
+  }
+
+  final hasCurrent =
+      currentTime.trim().isNotEmpty || currentSnapshotUrl.trim().isNotEmpty;
+  if (!hasCurrent) {
+    return true;
+  }
+
+  if (candidateTime.trim().isEmpty) {
+    return false;
+  }
+  if (currentTime.trim().isEmpty) {
+    return true;
+  }
+
+  final candidateDate = _tryParseDateTime(candidateTime);
+  final currentDate = _tryParseDateTime(currentTime);
+  if (candidateDate != null && currentDate != null) {
+    if (candidateDate.isAfter(currentDate)) {
+      return true;
+    }
+    if (candidateDate.isAtSameMomentAs(currentDate)) {
+      return candidateSnapshotUrl.trim().isNotEmpty &&
+          currentSnapshotUrl.trim().isEmpty;
+    }
+    return false;
+  }
+
+  final timeCompare = candidateTime.compareTo(currentTime);
+  if (timeCompare != 0) {
+    return timeCompare > 0;
+  }
+
+  return candidateSnapshotUrl.trim().isNotEmpty &&
+      currentSnapshotUrl.trim().isEmpty;
 }
 
 List<DetectionItem> _singleDetection(DetectionItem? item) {
@@ -927,6 +1216,25 @@ DateTime? _tryParseDateTime(String value) {
   return DateTime.tryParse(value.replaceFirst(' ', 'T'));
 }
 
+DateTime? _dateTimeFromRequestId(dynamic value) {
+  final requestId = value?.toString().trim();
+  if (requestId == null || requestId.isEmpty) {
+    return null;
+  }
+
+  final match = RegExp(r'(?:^|_)(\d{13})(?:_|$)').firstMatch(requestId);
+  if (match == null) {
+    return null;
+  }
+
+  final milliseconds = int.tryParse(match.group(1)!);
+  if (milliseconds == null) {
+    return null;
+  }
+
+  return DateTime.fromMillisecondsSinceEpoch(milliseconds, isUtc: true);
+}
+
 Map<dynamic, dynamic> _asMap(dynamic value) {
   if (value is Map<dynamic, dynamic>) {
     return value;
@@ -954,6 +1262,43 @@ String? _firstNonEmptyString(List<dynamic> candidates) {
     }
   }
   return null;
+}
+
+String? _diseaseClassFromMap(Map<dynamic, dynamic> data) {
+  return _firstNonEmptyString([
+    data['class_name_vi'],
+    data['class_vi'],
+    data['label_vi'],
+    data['disease_vi'],
+    data['disease_name_vi'],
+    data['class_name'],
+    data['class'],
+    data['label'],
+    data['disease'],
+    data['diseaseClass'],
+    data['disease_name'],
+    _firstStringFromArrayLike(data['all_classes_detected_vi']),
+    _firstStringFromArrayLike(data['all_classes_detected']),
+    data['class_name_en'],
+    data['class_en'],
+    data['label_en'],
+    data['disease_en'],
+    data['disease_name_en'],
+    _firstStringFromArrayLike(data['all_classes_detected_en']),
+    data['prediction'],
+    data['result'],
+  ]);
+}
+
+String? _inlineImageDataCandidate(dynamic value) {
+  final image = value?.toString().trim();
+  if (image == null || image.isEmpty) {
+    return null;
+  }
+
+  return image.startsWith('data:image/')
+      ? image
+      : 'data:image/jpeg;base64,$image';
 }
 
 String? _safeImageUrlCandidate(dynamic value) {
