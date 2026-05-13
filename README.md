@@ -28,18 +28,68 @@
 
 ## 🖼 Hình ảnh các màn hình (Screenshots)
 
-| Màn hình | Ảnh |
-| --- | --- |
-| Đăng nhập | ![Login](assets/screen/z7819933467133_aa3455a9271f6b2e2174176e08375e79.jpg) |
-| Trang chủ khu vườn | ![Home](assets/screen/z7819933474818_7bca74ae742f4be93c07b9cf8b459f6f.jpg) |
-| Chế độ & điều khiển bơm | ![Control](assets/screen/z7819933478898_9111537c359199e180c7994be46a0895.jpg) |
-| Chẩn đoán bệnh (tổng quan) | ![Diagnosis overview](assets/screen/z7819933544261_225024e663c983a36909dbcceb06ee8b.jpg) |
-| Chi tiết lần chụp | ![Capture detail](assets/screen/z7819933494714_957c713040bd0b41ed3827ff273811fb.jpg) |
-| Trợ lý AI (mở) | ![AI assistant](assets/screen/z7819933521588_9b7d80528b92f0bcc9c7fc58d4168798.jpg) |
-| Trợ lý AI (hội thoại) | ![AI chat](assets/screen/z7819933547141_1782abf3bca355173fbfc0ed3ef9b005.jpg) |
-| Trung tâm hỗ trợ | ![Support](assets/screen/z7819933485795_27a53df7d586f227cbced5d591bfa6ab.jpg) |
-| Hồ sơ người dùng | ![Profile](assets/screen/z7819933481096_e93e0a574bd85287d800c85799011850.jpg) |
-| Cấu hình Pi qua BLE | ![BLE setup](assets/screen/z7819945249825_e511b4c441cc72d56cda4e42a0680616.jpg) |
+<table>
+  <tr>
+    <td align="center">
+      <img src="assets/screen/z7819933467133_aa3455a9271f6b2e2174176e08375e79.jpg" width="240" alt="Login" />
+      <br />
+      <sub>Đăng nhập</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screen/z7819933474818_7bca74ae742f4be93c07b9cf8b459f6f.jpg" width="240" alt="Home" />
+      <br />
+      <sub>Trang chủ khu vườn</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/screen/z7819933478898_9111537c359199e180c7994be46a0895.jpg" width="240" alt="Control" />
+      <br />
+      <sub>Chế độ &amp; điều khiển bơm</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screen/z7819933544261_225024e663c983a36909dbcceb06ee8b.jpg" width="240" alt="Diagnosis overview" />
+      <br />
+      <sub>Chẩn đoán bệnh (tổng quan)</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/screen/z7819933494714_957c713040bd0b41ed3827ff273811fb.jpg" width="240" alt="Capture detail" />
+      <br />
+      <sub>Chi tiết lần chụp</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screen/z7819933521588_9b7d80528b92f0bcc9c7fc58d4168798.jpg" width="240" alt="AI assistant" />
+      <br />
+      <sub>Trợ lý AI (mở)</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/screen/z7819933547141_1782abf3bca355173fbfc0ed3ef9b005.jpg" width="240" alt="AI chat" />
+      <br />
+      <sub>Trợ lý AI (hội thoại)</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screen/z7819933485795_27a53df7d586f227cbced5d591bfa6ab.jpg" width="240" alt="Support" />
+      <br />
+      <sub>Trung tâm hỗ trợ</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/screen/z7819933481096_e93e0a574bd85287d800c85799011850.jpg" width="240" alt="Profile" />
+      <br />
+      <sub>Hồ sơ người dùng</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screen/z7819945249825_e511b4c441cc72d56cda4e42a0680616.jpg" width="240" alt="BLE setup" />
+      <br />
+      <sub>Cấu hình Pi qua BLE</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
