@@ -1,54 +1,124 @@
-import 'package:firebase_database/firebase_database.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'dart:convert';
 
-part 'firebase_realtime_database_service.g.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
-/// Service hỗ trợ thao tác với Firebase Realtime Database
-/// Cung cấp các phương thức cơ bản: lấy dữ liệu 1 lần, lắng nghe realtime, thêm, sửa, xóa
+class FirebaseRealtimeDatabaseException implements Exception {
+  const FirebaseRealtimeDatabaseException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class FirebaseRealtimeDatabaseService {
-  final FirebaseDatabase _db = FirebaseDatabase.instance;
+  FirebaseRealtimeDatabaseService({
+    required http.Client client,
+    FirebaseAuth? auth,
+    FirebaseApp? app,
+  }) : _client = client,
+       _auth = auth ?? FirebaseAuth.instance,
+       _app = app ?? Firebase.app();
 
-  /// Lấy dữ liệu một lần (Future)
-  Future<DataSnapshot> getData(String path) async {
-    final ref = _db.ref(path);
-    return await ref.get();
+  final http.Client _client;
+  final FirebaseAuth _auth;
+  final FirebaseApp _app;
+
+  Future<dynamic> getData(String path) async {
+    final uri = await _buildUri(path);
+    final response = await _client.get(uri);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw FirebaseRealtimeDatabaseException(
+        'Realtime Database request failed '
+        '(${response.statusCode}): ${response.body}',
+      );
+    }
+
+    if (response.body.trim().isEmpty || response.body.trim() == 'null') {
+      return null;
+    }
+
+    return jsonDecode(response.body);
   }
 
-  /// Lắng nghe dữ liệu (Stream) thay đổi realtime
-  Stream<DatabaseEvent> streamData(String path) {
-    return _db.ref(path).onValue;
-  }
-
-  /// Lắng nghe dữ liệu khi có thay đổi (Child added, changed, removed, moved)
-  Stream<DatabaseEvent> streamChildAdded(String path) {
-    return _db.ref(path).onChildAdded;
-  }
-
-  /// Ghi đè toàn bộ dữ liệu tại đường dẫn (Set)
-  Future<void> setData(String path, dynamic data) async {
-    await _db.ref(path).set(data);
-  }
-
-  /// Cập nhật một phần dữ liệu tại đường dẫn (Update) - Thường dùng Map<String, dynamic>
   Future<void> updateData(String path, Map<String, dynamic> data) async {
-    await _db.ref(path).update(data);
+    await _sendRequest(method: 'PATCH', path: path, body: jsonEncode(data));
   }
 
-  /// Xóa dữ liệu tại đường dẫn
-  Future<void> deleteData(String path) async {
-    await _db.ref(path).remove();
+  Future<void> setData(String path, Object? data) async {
+    await _sendRequest(method: 'PUT', path: path, body: jsonEncode(data));
   }
 
-  /// Tạo một node mới với key tự động sinh ra và đẩy dữ liệu vào
-  Future<void> pushData(String path, dynamic data) async {
-    final newRef = _db.ref(path).push();
-    await newRef.set(data);
+  Future<void> _sendRequest({
+    required String method,
+    required String path,
+    required String body,
+  }) async {
+    final uri = await _buildUri(path);
+    final response = switch (method) {
+      'PATCH' => await _client.patch(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: body,
+      ),
+      'PUT' => await _client.put(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: body,
+      ),
+      _ => throw FirebaseRealtimeDatabaseException(
+        'Unsupported Realtime Database method: $method',
+      ),
+    };
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw FirebaseRealtimeDatabaseException(
+        'Realtime Database request failed '
+        '(${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
+  Future<Uri> _buildUri(String path) async {
+    final databaseUrl = _app.options.databaseURL;
+    if (databaseUrl == null || databaseUrl.trim().isEmpty) {
+      throw const FirebaseRealtimeDatabaseException(
+        'Realtime Database URL is not configured.',
+      );
+    }
+
+    final normalizedBase = databaseUrl.endsWith('/')
+        ? databaseUrl.substring(0, databaseUrl.length - 1)
+        : databaseUrl;
+    final normalizedPath = path
+        .trim()
+        .replaceAll('\\', '/')
+        .replaceAll(RegExp(r'^/+|/+$'), '');
+    final encodedPath = normalizedPath
+        .split('/')
+        .where((segment) => segment.isNotEmpty)
+        .map(Uri.encodeComponent)
+        .join('/');
+
+    var uri = Uri.parse('$normalizedBase/$encodedPath.json');
+    final token = await _auth.currentUser?.getIdToken();
+    if (token != null && token.isNotEmpty) {
+      uri = uri.replace(
+        queryParameters: {...uri.queryParameters, 'auth': token},
+      );
+    }
+
+    return uri;
   }
 }
 
-@riverpod
-FirebaseRealtimeDatabaseService firebaseRealtimeDatabaseService(
-  FirebaseRealtimeDatabaseServiceRef ref,
-) {
-  return FirebaseRealtimeDatabaseService();
-}
+final firebaseRealtimeDatabaseServiceProvider =
+    Provider<FirebaseRealtimeDatabaseService>((ref) {
+      final client = http.Client();
+      ref.onDispose(client.close);
+      return FirebaseRealtimeDatabaseService(client: client);
+    });

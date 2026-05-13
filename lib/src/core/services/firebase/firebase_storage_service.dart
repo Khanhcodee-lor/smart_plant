@@ -26,7 +26,48 @@ class FirebaseStorageService {
   }
 
   Future<String> getDownloadUrl(String path) async {
-    return await _storage.ref().child(path).getDownloadURL();
+    return await resolveDownloadUrl(path);
+  }
+
+  Future<String> resolveDownloadUrl(String pathOrUrl) async {
+    final normalized = pathOrUrl.trim();
+    if (normalized.isEmpty) {
+      return '';
+    }
+
+    final uri = Uri.tryParse(normalized);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      final storagePath = _storagePathFromGoogleStorageUrl(uri);
+      if (storagePath != null) {
+        return await _storage.ref().child(storagePath).getDownloadURL();
+      }
+
+      return normalized;
+    }
+
+    if (normalized.startsWith('gs://')) {
+      return await _storage.refFromURL(normalized).getDownloadURL();
+    }
+
+    return await _storage.ref().child(normalized).getDownloadURL();
+  }
+
+  String? _storagePathFromGoogleStorageUrl(Uri uri) {
+    if (uri.host != 'storage.googleapis.com') {
+      return null;
+    }
+
+    final segments = uri.pathSegments;
+    if (segments.length < 2) {
+      return null;
+    }
+
+    final bucket = segments.first;
+    if (bucket != _storage.bucket) {
+      return null;
+    }
+
+    return segments.skip(1).join('/');
   }
 }
 

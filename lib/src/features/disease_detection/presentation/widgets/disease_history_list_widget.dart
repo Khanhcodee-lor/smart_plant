@@ -1,23 +1,27 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class DiseaseHistoryListWidget extends StatelessWidget {
-  final List<DetectionItem> history;
+  final List<DetectionItem> items;
+  final String emptyMessage;
 
-  const DiseaseHistoryListWidget({super.key, required this.history});
+  const DiseaseHistoryListWidget({
+    super.key,
+    required this.items,
+    this.emptyMessage = 'Chưa có lịch sử phát hiện bệnh',
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (history.isEmpty) {
+    if (items.isEmpty) {
       return Center(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 20.h),
-          child: "Chưa có lịch sử phát hiện bệnh".bodyCustom(
-            color: AppColors.disabledText,
-          ),
+          child: emptyMessage.bodyCustom(color: AppColors.disabledText),
         ),
       );
     }
@@ -25,29 +29,22 @@ class DiseaseHistoryListWidget extends StatelessWidget {
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: history.length,
+      itemCount: items.length,
       separatorBuilder: (context, index) => SizedBox(height: 12.h),
       itemBuilder: (context, index) {
-        final item = history[index];
-        final isHealthy = item.diseaseClass.toLowerCase() == 'healthy';
-
-        final Map<String, String> diseaseTranslations = {
-          'healthy': 'Khỏe mạnh',
-          'tomato leaf late blight': 'Bệnh mốc sương trên lá cà chua',
-          'tomato leaf early blight': 'Bệnh đốm vòng trên lá cà chua',
-          'tomato leaf mold': 'Bệnh nấm lá cà chua',
-          'tomato yellow leaf curl virus': 'Bệnh xoăn vàng lá do virus',
-          'tomato mosaic virus': 'Bệnh khảm lá do virus',
-          'tomato septoria leaf spot': 'Bệnh đốm lá Septoria',
-          'tomato spider mites two-spotted spider mite': 'Nhện đỏ',
-          'tomato target spot': 'Bệnh đốm vòng (Target Spot)',
-          'tomato bacterial spot': 'Bệnh đốm vi khuẩn',
-          // Thêm các bệnh khác nếu cần
-        };
-
-        String translatedDisease =
-            diseaseTranslations[item.diseaseClass.toLowerCase()] ??
-            item.diseaseClass;
+        final item = items[index];
+        final isHealthy = isHealthyDisease(item.diseaseClass);
+        final translatedDisease = translateDiseaseLabel(item.diseaseClass);
+        final metadataWidgets = <Widget>[
+          if (item.confidence > 0)
+            "Độ tin cậy: ${(item.confidence * 100).toStringAsFixed(1)}%"
+                .bodyCustom(size: 12.sp, color: AppColors.disabledText),
+          if (item.time.trim().isNotEmpty)
+            Text(
+              item.time,
+              style: TextStyle(fontSize: 10.sp, color: AppColors.disabledText),
+            ),
+        ];
 
         return Container(
           padding: EdgeInsets.all(12.r),
@@ -87,24 +84,15 @@ class DiseaseHistoryListWidget extends StatelessWidget {
                       color: AppColors.textMain,
                       fontWeight: FontWeight.w600,
                     ),
-                    SizedBox(height: 4.h),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        "Độ tin cậy: ${(item.confidence * 100).toStringAsFixed(1)}%"
-                            .bodyCustom(
-                              size: 12.sp,
-                              color: AppColors.disabledText,
-                            ),
-                        Text(
-                          item.time,
-                          style: TextStyle(
-                            fontSize: 10.sp,
-                            color: AppColors.disabledText,
-                          ),
-                        ),
-                      ],
-                    ),
+                    if (metadataWidgets.isNotEmpty) ...[
+                      SizedBox(height: 4.h),
+                      Wrap(
+                        spacing: 12.w,
+                        runSpacing: 4.h,
+                        alignment: WrapAlignment.spaceBetween,
+                        children: metadataWidgets,
+                      ),
+                    ],
                   ],
                 ),
               ),

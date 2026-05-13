@@ -1,6 +1,6 @@
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 
 abstract class PlantRepository {
-  /// Lấy danh sách cây realtime từ Firebase Realtime Database
+  /// Streams plant data from Cloud Firestore.
   Stream<List<Plant>> getPlantsStream();
 }

@@ -1,4 +1,3 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "cmake.sourceDirectory": "D:/App Project/Iot/Smath_tree/app_iot/linux"
+  "cmake.sourceDirectory": "D:/Workspace/Project/Flutter/Iot_Plant/smart_plant/linux"
 }

@@ -1,4 +1,5 @@
 import 'package:app_iot/src/features/chatbot/domain/entities/chat_message.dart';
+import 'package:app_iot/src/features/chatbot/presentation/utils/chatbot_message_formatter.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -53,6 +54,7 @@ class ChatbotController extends StateNotifier<ChatState> {
 
       // Lấy câu trả lời (trường 'reply' đã định nghĩa ở index.js)
       String aiResponse = result.data['reply'] ?? "AI không có phản hồi";
+      aiResponse = formatAssistantMessageForDisplay(aiResponse);
 
       // 3. Thêm tin nhắn AI vào state, tắt Loading
       state = state.copyWith(

@@ -21,6 +21,7 @@ mixin _$DetectionItem {
   double get confidence => throw _privateConstructorUsedError;
   String get time => throw _privateConstructorUsedError;
   String get snapshotUrl => throw _privateConstructorUsedError;
+  String get sourceDocumentPath => throw _privateConstructorUsedError;
 
   /// Create a copy of DetectionItem
   /// with the given fields replaced by the non-null parameter values.
@@ -41,6 +42,7 @@ abstract class $DetectionItemCopyWith<$Res> {
     double confidence,
     String time,
     String snapshotUrl,
+    String sourceDocumentPath,
   });
 }
 
@@ -63,6 +65,7 @@ class _$DetectionItemCopyWithImpl<$Res, $Val extends DetectionItem>
     Object? confidence = null,
     Object? time = null,
     Object? snapshotUrl = null,
+    Object? sourceDocumentPath = null,
   }) {
     return _then(
       _value.copyWith(
@@ -81,6 +84,10 @@ class _$DetectionItemCopyWithImpl<$Res, $Val extends DetectionItem>
             snapshotUrl: null == snapshotUrl
                 ? _value.snapshotUrl
                 : snapshotUrl // ignore: cast_nullable_to_non_nullable
+                      as String,
+            sourceDocumentPath: null == sourceDocumentPath
+                ? _value.sourceDocumentPath
+                : sourceDocumentPath // ignore: cast_nullable_to_non_nullable
                       as String,
           )
           as $Val,
@@ -102,6 +109,7 @@ abstract class _$$DetectionItemImplCopyWith<$Res>
     double confidence,
     String time,
     String snapshotUrl,
+    String sourceDocumentPath,
   });
 }
 
@@ -123,6 +131,7 @@ class __$$DetectionItemImplCopyWithImpl<$Res>
     Object? confidence = null,
     Object? time = null,
     Object? snapshotUrl = null,
+    Object? sourceDocumentPath = null,
   }) {
     return _then(
       _$DetectionItemImpl(
@@ -142,6 +151,10 @@ class __$$DetectionItemImplCopyWithImpl<$Res>
             ? _value.snapshotUrl
             : snapshotUrl // ignore: cast_nullable_to_non_nullable
                   as String,
+        sourceDocumentPath: null == sourceDocumentPath
+            ? _value.sourceDocumentPath
+            : sourceDocumentPath // ignore: cast_nullable_to_non_nullable
+                  as String,
       ),
     );
   }
@@ -155,6 +168,7 @@ class _$DetectionItemImpl implements _DetectionItem {
     required this.confidence,
     required this.time,
     this.snapshotUrl = '',
+    this.sourceDocumentPath = '',
   });
 
   @override
@@ -166,10 +180,13 @@ class _$DetectionItemImpl implements _DetectionItem {
   @override
   @JsonKey()
   final String snapshotUrl;
+  @override
+  @JsonKey()
+  final String sourceDocumentPath;
 
   @override
   String toString() {
-    return 'DetectionItem(diseaseClass: $diseaseClass, confidence: $confidence, time: $time, snapshotUrl: $snapshotUrl)';
+    return 'DetectionItem(diseaseClass: $diseaseClass, confidence: $confidence, time: $time, snapshotUrl: $snapshotUrl, sourceDocumentPath: $sourceDocumentPath)';
   }
 
   @override
@@ -183,12 +200,20 @@ class _$DetectionItemImpl implements _DetectionItem {
                 other.confidence == confidence) &&
             (identical(other.time, time) || other.time == time) &&
             (identical(other.snapshotUrl, snapshotUrl) ||
-                other.snapshotUrl == snapshotUrl));
+                other.snapshotUrl == snapshotUrl) &&
+            (identical(other.sourceDocumentPath, sourceDocumentPath) ||
+                other.sourceDocumentPath == sourceDocumentPath));
   }
 
   @override
-  int get hashCode =>
-      Object.hash(runtimeType, diseaseClass, confidence, time, snapshotUrl);
+  int get hashCode => Object.hash(
+    runtimeType,
+    diseaseClass,
+    confidence,
+    time,
+    snapshotUrl,
+    sourceDocumentPath,
+  );
 
   /// Create a copy of DetectionItem
   /// with the given fields replaced by the non-null parameter values.
@@ -205,6 +230,7 @@ abstract class _DetectionItem implements DetectionItem {
     required final double confidence,
     required final String time,
     final String snapshotUrl,
+    final String sourceDocumentPath,
   }) = _$DetectionItemImpl;
 
   @override
@@ -215,6 +241,8 @@ abstract class _DetectionItem implements DetectionItem {
   String get time;
   @override
   String get snapshotUrl;
+  @override
+  String get sourceDocumentPath;
 
   /// Create a copy of DetectionItem
   /// with the given fields replaced by the non-null parameter values.
@@ -225,14 +253,230 @@ abstract class _DetectionItem implements DetectionItem {
 }
 
 /// @nodoc
+mixin _$SensorHistoryItem {
+  double get temperature => throw _privateConstructorUsedError;
+  double get humidity => throw _privateConstructorUsedError;
+  double get soilMoisture => throw _privateConstructorUsedError;
+  String get time => throw _privateConstructorUsedError;
+
+  /// Create a copy of SensorHistoryItem
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $SensorHistoryItemCopyWith<SensorHistoryItem> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $SensorHistoryItemCopyWith<$Res> {
+  factory $SensorHistoryItemCopyWith(
+    SensorHistoryItem value,
+    $Res Function(SensorHistoryItem) then,
+  ) = _$SensorHistoryItemCopyWithImpl<$Res, SensorHistoryItem>;
+  @useResult
+  $Res call({
+    double temperature,
+    double humidity,
+    double soilMoisture,
+    String time,
+  });
+}
+
+/// @nodoc
+class _$SensorHistoryItemCopyWithImpl<$Res, $Val extends SensorHistoryItem>
+    implements $SensorHistoryItemCopyWith<$Res> {
+  _$SensorHistoryItemCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of SensorHistoryItem
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? temperature = null,
+    Object? humidity = null,
+    Object? soilMoisture = null,
+    Object? time = null,
+  }) {
+    return _then(
+      _value.copyWith(
+            temperature: null == temperature
+                ? _value.temperature
+                : temperature // ignore: cast_nullable_to_non_nullable
+                      as double,
+            humidity: null == humidity
+                ? _value.humidity
+                : humidity // ignore: cast_nullable_to_non_nullable
+                      as double,
+            soilMoisture: null == soilMoisture
+                ? _value.soilMoisture
+                : soilMoisture // ignore: cast_nullable_to_non_nullable
+                      as double,
+            time: null == time
+                ? _value.time
+                : time // ignore: cast_nullable_to_non_nullable
+                      as String,
+          )
+          as $Val,
+    );
+  }
+}
+
+/// @nodoc
+abstract class _$$SensorHistoryItemImplCopyWith<$Res>
+    implements $SensorHistoryItemCopyWith<$Res> {
+  factory _$$SensorHistoryItemImplCopyWith(
+    _$SensorHistoryItemImpl value,
+    $Res Function(_$SensorHistoryItemImpl) then,
+  ) = __$$SensorHistoryItemImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call({
+    double temperature,
+    double humidity,
+    double soilMoisture,
+    String time,
+  });
+}
+
+/// @nodoc
+class __$$SensorHistoryItemImplCopyWithImpl<$Res>
+    extends _$SensorHistoryItemCopyWithImpl<$Res, _$SensorHistoryItemImpl>
+    implements _$$SensorHistoryItemImplCopyWith<$Res> {
+  __$$SensorHistoryItemImplCopyWithImpl(
+    _$SensorHistoryItemImpl _value,
+    $Res Function(_$SensorHistoryItemImpl) _then,
+  ) : super(_value, _then);
+
+  /// Create a copy of SensorHistoryItem
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? temperature = null,
+    Object? humidity = null,
+    Object? soilMoisture = null,
+    Object? time = null,
+  }) {
+    return _then(
+      _$SensorHistoryItemImpl(
+        temperature: null == temperature
+            ? _value.temperature
+            : temperature // ignore: cast_nullable_to_non_nullable
+                  as double,
+        humidity: null == humidity
+            ? _value.humidity
+            : humidity // ignore: cast_nullable_to_non_nullable
+                  as double,
+        soilMoisture: null == soilMoisture
+            ? _value.soilMoisture
+            : soilMoisture // ignore: cast_nullable_to_non_nullable
+                  as double,
+        time: null == time
+            ? _value.time
+            : time // ignore: cast_nullable_to_non_nullable
+                  as String,
+      ),
+    );
+  }
+}
+
+/// @nodoc
+
+class _$SensorHistoryItemImpl implements _SensorHistoryItem {
+  const _$SensorHistoryItemImpl({
+    required this.temperature,
+    required this.humidity,
+    required this.soilMoisture,
+    required this.time,
+  });
+
+  @override
+  final double temperature;
+  @override
+  final double humidity;
+  @override
+  final double soilMoisture;
+  @override
+  final String time;
+
+  @override
+  String toString() {
+    return 'SensorHistoryItem(temperature: $temperature, humidity: $humidity, soilMoisture: $soilMoisture, time: $time)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$SensorHistoryItemImpl &&
+            (identical(other.temperature, temperature) ||
+                other.temperature == temperature) &&
+            (identical(other.humidity, humidity) ||
+                other.humidity == humidity) &&
+            (identical(other.soilMoisture, soilMoisture) ||
+                other.soilMoisture == soilMoisture) &&
+            (identical(other.time, time) || other.time == time));
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(runtimeType, temperature, humidity, soilMoisture, time);
+
+  /// Create a copy of SensorHistoryItem
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$SensorHistoryItemImplCopyWith<_$SensorHistoryItemImpl> get copyWith =>
+      __$$SensorHistoryItemImplCopyWithImpl<_$SensorHistoryItemImpl>(
+        this,
+        _$identity,
+      );
+}
+
+abstract class _SensorHistoryItem implements SensorHistoryItem {
+  const factory _SensorHistoryItem({
+    required final double temperature,
+    required final double humidity,
+    required final double soilMoisture,
+    required final String time,
+  }) = _$SensorHistoryItemImpl;
+
+  @override
+  double get temperature;
+  @override
+  double get humidity;
+  @override
+  double get soilMoisture;
+  @override
+  String get time;
+
+  /// Create a copy of SensorHistoryItem
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$SensorHistoryItemImplCopyWith<_$SensorHistoryItemImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
 mixin _$Plant {
   String get id => throw _privateConstructorUsedError;
   String get name => throw _privateConstructorUsedError;
   String get status => throw _privateConstructorUsedError;
   String get imageUrl => throw _privateConstructorUsedError;
   String get videoUrl => throw _privateConstructorUsedError;
+  double get temperature => throw _privateConstructorUsedError;
+  double get humidity => throw _privateConstructorUsedError;
+  double get soilMoisture => throw _privateConstructorUsedError;
   DetectionItem? get latestDetection => throw _privateConstructorUsedError;
   List<DetectionItem> get history => throw _privateConstructorUsedError;
+  List<SensorHistoryItem> get sensorHistory =>
+      throw _privateConstructorUsedError;
 
   /// Create a copy of Plant
   /// with the given fields replaced by the non-null parameter values.
@@ -251,8 +495,12 @@ abstract class $PlantCopyWith<$Res> {
     String status,
     String imageUrl,
     String videoUrl,
+    double temperature,
+    double humidity,
+    double soilMoisture,
     DetectionItem? latestDetection,
     List<DetectionItem> history,
+    List<SensorHistoryItem> sensorHistory,
   });
 
   $DetectionItemCopyWith<$Res>? get latestDetection;
@@ -278,8 +526,12 @@ class _$PlantCopyWithImpl<$Res, $Val extends Plant>
     Object? status = null,
     Object? imageUrl = null,
     Object? videoUrl = null,
+    Object? temperature = null,
+    Object? humidity = null,
+    Object? soilMoisture = null,
     Object? latestDetection = freezed,
     Object? history = null,
+    Object? sensorHistory = null,
   }) {
     return _then(
       _value.copyWith(
@@ -303,6 +555,18 @@ class _$PlantCopyWithImpl<$Res, $Val extends Plant>
                 ? _value.videoUrl
                 : videoUrl // ignore: cast_nullable_to_non_nullable
                       as String,
+            temperature: null == temperature
+                ? _value.temperature
+                : temperature // ignore: cast_nullable_to_non_nullable
+                      as double,
+            humidity: null == humidity
+                ? _value.humidity
+                : humidity // ignore: cast_nullable_to_non_nullable
+                      as double,
+            soilMoisture: null == soilMoisture
+                ? _value.soilMoisture
+                : soilMoisture // ignore: cast_nullable_to_non_nullable
+                      as double,
             latestDetection: freezed == latestDetection
                 ? _value.latestDetection
                 : latestDetection // ignore: cast_nullable_to_non_nullable
@@ -311,6 +575,10 @@ class _$PlantCopyWithImpl<$Res, $Val extends Plant>
                 ? _value.history
                 : history // ignore: cast_nullable_to_non_nullable
                       as List<DetectionItem>,
+            sensorHistory: null == sensorHistory
+                ? _value.sensorHistory
+                : sensorHistory // ignore: cast_nullable_to_non_nullable
+                      as List<SensorHistoryItem>,
           )
           as $Val,
     );
@@ -345,8 +613,12 @@ abstract class _$$PlantImplCopyWith<$Res> implements $PlantCopyWith<$Res> {
     String status,
     String imageUrl,
     String videoUrl,
+    double temperature,
+    double humidity,
+    double soilMoisture,
     DetectionItem? latestDetection,
     List<DetectionItem> history,
+    List<SensorHistoryItem> sensorHistory,
   });
 
   @override
@@ -372,8 +644,12 @@ class __$$PlantImplCopyWithImpl<$Res>
     Object? status = null,
     Object? imageUrl = null,
     Object? videoUrl = null,
+    Object? temperature = null,
+    Object? humidity = null,
+    Object? soilMoisture = null,
     Object? latestDetection = freezed,
     Object? history = null,
+    Object? sensorHistory = null,
   }) {
     return _then(
       _$PlantImpl(
@@ -397,6 +673,18 @@ class __$$PlantImplCopyWithImpl<$Res>
             ? _value.videoUrl
             : videoUrl // ignore: cast_nullable_to_non_nullable
                   as String,
+        temperature: null == temperature
+            ? _value.temperature
+            : temperature // ignore: cast_nullable_to_non_nullable
+                  as double,
+        humidity: null == humidity
+            ? _value.humidity
+            : humidity // ignore: cast_nullable_to_non_nullable
+                  as double,
+        soilMoisture: null == soilMoisture
+            ? _value.soilMoisture
+            : soilMoisture // ignore: cast_nullable_to_non_nullable
+                  as double,
         latestDetection: freezed == latestDetection
             ? _value.latestDetection
             : latestDetection // ignore: cast_nullable_to_non_nullable
@@ -405,6 +693,10 @@ class __$$PlantImplCopyWithImpl<$Res>
             ? _value._history
             : history // ignore: cast_nullable_to_non_nullable
                   as List<DetectionItem>,
+        sensorHistory: null == sensorHistory
+            ? _value._sensorHistory
+            : sensorHistory // ignore: cast_nullable_to_non_nullable
+                  as List<SensorHistoryItem>,
       ),
     );
   }
@@ -419,9 +711,14 @@ class _$PlantImpl implements _Plant {
     required this.status,
     required this.imageUrl,
     required this.videoUrl,
+    required this.temperature,
+    required this.humidity,
+    required this.soilMoisture,
     required this.latestDetection,
     required final List<DetectionItem> history,
-  }) : _history = history;
+    required final List<SensorHistoryItem> sensorHistory,
+  }) : _history = history,
+       _sensorHistory = sensorHistory;
 
   @override
   final String id;
@@ -434,6 +731,12 @@ class _$PlantImpl implements _Plant {
   @override
   final String videoUrl;
   @override
+  final double temperature;
+  @override
+  final double humidity;
+  @override
+  final double soilMoisture;
+  @override
   final DetectionItem? latestDetection;
   final List<DetectionItem> _history;
   @override
@@ -443,9 +746,17 @@ class _$PlantImpl implements _Plant {
     return EqualUnmodifiableListView(_history);
   }
 
+  final List<SensorHistoryItem> _sensorHistory;
+  @override
+  List<SensorHistoryItem> get sensorHistory {
+    if (_sensorHistory is EqualUnmodifiableListView) return _sensorHistory;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_sensorHistory);
+  }
+
   @override
   String toString() {
-    return 'Plant(id: $id, name: $name, status: $status, imageUrl: $imageUrl, videoUrl: $videoUrl, latestDetection: $latestDetection, history: $history)';
+    return 'Plant(id: $id, name: $name, status: $status, imageUrl: $imageUrl, videoUrl: $videoUrl, temperature: $temperature, humidity: $humidity, soilMoisture: $soilMoisture, latestDetection: $latestDetection, history: $history, sensorHistory: $sensorHistory)';
   }
 
   @override
@@ -460,9 +771,19 @@ class _$PlantImpl implements _Plant {
                 other.imageUrl == imageUrl) &&
             (identical(other.videoUrl, videoUrl) ||
                 other.videoUrl == videoUrl) &&
+            (identical(other.temperature, temperature) ||
+                other.temperature == temperature) &&
+            (identical(other.humidity, humidity) ||
+                other.humidity == humidity) &&
+            (identical(other.soilMoisture, soilMoisture) ||
+                other.soilMoisture == soilMoisture) &&
             (identical(other.latestDetection, latestDetection) ||
                 other.latestDetection == latestDetection) &&
-            const DeepCollectionEquality().equals(other._history, _history));
+            const DeepCollectionEquality().equals(other._history, _history) &&
+            const DeepCollectionEquality().equals(
+              other._sensorHistory,
+              _sensorHistory,
+            ));
   }
 
   @override
@@ -473,8 +794,12 @@ class _$PlantImpl implements _Plant {
     status,
     imageUrl,
     videoUrl,
+    temperature,
+    humidity,
+    soilMoisture,
     latestDetection,
     const DeepCollectionEquality().hash(_history),
+    const DeepCollectionEquality().hash(_sensorHistory),
   );
 
   /// Create a copy of Plant
@@ -493,8 +818,12 @@ abstract class _Plant implements Plant {
     required final String status,
     required final String imageUrl,
     required final String videoUrl,
+    required final double temperature,
+    required final double humidity,
+    required final double soilMoisture,
     required final DetectionItem? latestDetection,
     required final List<DetectionItem> history,
+    required final List<SensorHistoryItem> sensorHistory,
   }) = _$PlantImpl;
 
   @override
@@ -508,9 +837,17 @@ abstract class _Plant implements Plant {
   @override
   String get videoUrl;
   @override
+  double get temperature;
+  @override
+  double get humidity;
+  @override
+  double get soilMoisture;
+  @override
   DetectionItem? get latestDetection;
   @override
   List<DetectionItem> get history;
+  @override
+  List<SensorHistoryItem> get sensorHistory;
 
   /// Create a copy of Plant
   /// with the given fields replaced by the non-null parameter values.

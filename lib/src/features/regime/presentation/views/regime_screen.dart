@@ -1,19 +1,15 @@
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
-import 'package:app_iot/src/features/home/presentation/controllers/weather_controller.dart';
-import 'package:app_iot/src/features/regime/presentation/widgets/automatic_regime_card.dart';
+import 'package:app_iot/src/features/home/domain/entities/plant.dart';
+import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
+import 'package:app_iot/src/features/regime/presentation/controllers/regime_realtime_controller.dart';
 import 'package:app_iot/src/features/regime/presentation/widgets/header_regime.dart';
-import 'package:app_iot/src/features/regime/presentation/widgets/regime_toggle_button.dart';
-import 'package:app_iot/src/features/regime/presentation/widgets/schedule_regime_list.dart';
+import 'package:app_iot/src/features/regime/presentation/widgets/pump_control_card.dart';
 import 'package:app_iot/src/features/regime/presentation/widgets/sensor_status.dart';
 import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-
-final regimeModeProvider = StateProvider<bool>(
-  (ref) => true,
-); // true = Auto, false = Schedule
 
 class RegimeScreen extends BaseView {
   const RegimeScreen({super.key});
@@ -40,35 +36,38 @@ class RegimeScreen extends BaseView {
 
   @override
   Widget buildBody(BuildContext context, WidgetRef ref) {
-    final isAuto = ref.watch(regimeModeProvider);
+    final plantId = _resolveRegimePlantId(ref.watch(plantControllerProvider));
 
     return SizedBox.expand(
       child: AppRefreshScrollView(
         onRefresh: () async {
-          return await ref.refresh(weatherProvider.future);
+          ref.invalidate(plantControllerProvider);
+          ref.invalidate(regimeRealtimeDataProvider(plantId));
+
+          await Future.wait([
+            ref.read(plantControllerProvider.future),
+            ref.read(regimeRealtimeDataProvider(plantId).future),
+          ]);
         },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const HeaderRegime(),
-            SizedBox(height: 6.h),
-            RegimeToggleButton(
-              isAuto: isAuto,
-              onToggle: (val) =>
-                  ref.read(regimeModeProvider.notifier).state = val,
-            ),
-            SizedBox(height: 10.h),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: isAuto
-                  ? const AutomaticRegimeCard()
-                  : const ScheduleRegimeList(),
-            ),
             SizedBox(height: 18.h),
-            SensorStatus(),
+            SensorStatus(plantId: plantId),
+            SizedBox(height: 12.h),
+            PumpControlCard(plantId: plantId),
           ],
         ),
       ),
     );
   }
+}
+
+String _resolveRegimePlantId(AsyncValue<List<Plant>> plantAsyncValue) {
+  final plants = plantAsyncValue.asData?.value ?? const <Plant>[];
+  if (plants.isEmpty) {
+    return 'tomato_001';
+  }
+  return plants.first.id;
 }
