@@ -28,65 +28,65 @@
 
 ## 🖼 Hình ảnh các màn hình (Screenshots)
 
-<table>
+<table width="100%">
   <tr>
-    <td align="center">
-      <img src="assets/screen/z7819933467133_aa3455a9271f6b2e2174176e08375e79.jpg" width="240" alt="Login" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933467133_aa3455a9271f6b2e2174176e08375e79.jpg" width="220" alt="Dang nhap" />
       <br />
-      <sub>Đăng nhập</sub>
+      <strong>Đăng nhập</strong>
     </td>
-    <td align="center">
-      <img src="assets/screen/z7819933474818_7bca74ae742f4be93c07b9cf8b459f6f.jpg" width="240" alt="Home" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933474818_7bca74ae742f4be93c07b9cf8b459f6f.jpg" width="220" alt="Trang chu khu vuon" />
       <br />
-      <sub>Trang chủ khu vườn</sub>
+      <strong>Trang chủ khu vườn</strong>
     </td>
   </tr>
   <tr>
-    <td align="center">
-      <img src="assets/screen/z7819933478898_9111537c359199e180c7994be46a0895.jpg" width="240" alt="Control" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933478898_9111537c359199e180c7994be46a0895.jpg" width="220" alt="Che do dieu khien bom" />
       <br />
-      <sub>Chế độ &amp; điều khiển bơm</sub>
+      <strong>Chế độ &amp; điều khiển bơm</strong>
     </td>
-    <td align="center">
-      <img src="assets/screen/z7819933544261_225024e663c983a36909dbcceb06ee8b.jpg" width="240" alt="Diagnosis overview" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933544261_225024e663c983a36909dbcceb06ee8b.jpg" width="220" alt="Chan doan tong quan" />
       <br />
-      <sub>Chẩn đoán bệnh (tổng quan)</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="assets/screen/z7819933494714_957c713040bd0b41ed3827ff273811fb.jpg" width="240" alt="Capture detail" />
-      <br />
-      <sub>Chi tiết lần chụp</sub>
-    </td>
-    <td align="center">
-      <img src="assets/screen/z7819933521588_9b7d80528b92f0bcc9c7fc58d4168798.jpg" width="240" alt="AI assistant" />
-      <br />
-      <sub>Trợ lý AI (mở)</sub>
+      <strong>Chẩn đoán bệnh (tổng quan)</strong>
     </td>
   </tr>
   <tr>
-    <td align="center">
-      <img src="assets/screen/z7819933547141_1782abf3bca355173fbfc0ed3ef9b005.jpg" width="240" alt="AI chat" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933494714_957c713040bd0b41ed3827ff273811fb.jpg" width="220" alt="Chi tiet lan chup" />
       <br />
-      <sub>Trợ lý AI (hội thoại)</sub>
+      <strong>Chi tiết lần chụp</strong>
     </td>
-    <td align="center">
-      <img src="assets/screen/z7819933485795_27a53df7d586f227cbced5d591bfa6ab.jpg" width="240" alt="Support" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933521588_9b7d80528b92f0bcc9c7fc58d4168798.jpg" width="220" alt="Tro ly AI" />
       <br />
-      <sub>Trung tâm hỗ trợ</sub>
+      <strong>Trợ lý AI (mở)</strong>
     </td>
   </tr>
   <tr>
-    <td align="center">
-      <img src="assets/screen/z7819933481096_e93e0a574bd85287d800c85799011850.jpg" width="240" alt="Profile" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933547141_1782abf3bca355173fbfc0ed3ef9b005.jpg" width="220" alt="Tro ly AI hoi thoai" />
       <br />
-      <sub>Hồ sơ người dùng</sub>
+      <strong>Trợ lý AI (hội thoại)</strong>
     </td>
-    <td align="center">
-      <img src="assets/screen/z7819945249825_e511b4c441cc72d56cda4e42a0680616.jpg" width="240" alt="BLE setup" />
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933485795_27a53df7d586f227cbced5d591bfa6ab.jpg" width="220" alt="Trung tam ho tro" />
       <br />
-      <sub>Cấu hình Pi qua BLE</sub>
+      <strong>Trung tâm hỗ trợ</strong>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819933481096_e93e0a574bd85287d800c85799011850.jpg" width="220" alt="Ho so nguoi dung" />
+      <br />
+      <strong>Hồ sơ người dùng</strong>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screen/z7819945249825_e511b4c441cc72d56cda4e42a0680616.jpg" width="220" alt="Cau hinh BLE" />
+      <br />
+      <strong>Cấu hình Pi qua BLE</strong>
     </td>
   </tr>
 </table>
