@@ -2,6 +2,10 @@
 
 **Plant Smart** là ứng dụng di động đóng vai trò là trung tâm điều khiển và giám sát cho hệ thống IoT nông nghiệp thông minh. Ứng dụng cho phép người dùng theo dõi tình trạng môi trường, điều khiển thiết bị tưới tiêu tự động và nhận cảnh báo sớm về các loại bệnh trên cây trồng thông qua tích hợp AI.
 
+# Plant Smart - IoT Plant Doctor (Flutter App)
+
+**Plant Smart** là ứng dụng di động đóng vai trò là trung tâm điều khiển và giám sát cho hệ thống IoT nông nghiệp thông minh. Ứng dụng cho phép người dùng theo dõi tình trạng môi trường, điều khiển thiết bị tưới tiêu tự động và nhận cảnh báo sớm về các loại bệnh trên cây trồng thông qua tích hợp AI.
+
 ## Báo cáo dự án (Project Report)
 
 ### Mục tiêu
@@ -9,6 +13,35 @@
 * Hiển thị dữ liệu cảm biến, trạng thái thiết bị và lịch sử hoạt động theo thời gian thực.
 * Hỗ trợ phát hiện sớm bệnh cây và cung cấp cảnh báo/khuyến nghị chăm sóc.
 * Đảm bảo giao diện thân thiện, dễ sử dụng cho người dùng phổ thông.
+
+---
+
+## Nền tảng xây dựng (Powered by)
+
+Ứng dụng được phát triển dựa trên sức mạnh của 3 nền tảng cốt lõi:
+
+<table width="100%">
+  <tr>
+    <td align="center" width="33%" valign="top">
+      <img src="assets/create/flutter.png" height="80" alt="Flutter" />
+      <br /><br />
+      <strong>Flutter</strong>
+      <p>Framework phát triển giao diện người dùng đa nền tảng, mang lại trải nghiệm mượt mà và hiệu năng cao cho thiết bị di động.</p>
+    </td>
+    <td align="center" width="33%" valign="top">
+      <img src="assets/create/firebase-logo.png" height="80" alt="Firebase" />
+      <br /><br />
+      <strong>Firebase</strong>
+      <p>Hệ sinh thái backend mạnh mẽ đảm nhiệm xác thực người dùng, lưu trữ dữ liệu đám mây và đồng bộ cơ sở dữ liệu realtime.</p>
+    </td>
+    <td align="center" width="33%" valign="top">
+      <img src="assets/create/vscode.png" height="80" alt="VSCode" />
+      <br /><br />
+      <strong>Visual Studio Code</strong>
+      <p>Môi trường phát triển tích hợp (IDE) chính, hỗ trợ viết mã, gỡ lỗi và quản lý toàn bộ dự án.</p>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -104,8 +137,3 @@ Dự án chú trọng áp dụng các best practices của hệ sinh thái Flutt
   * `fl_chart` - Vẽ biểu đồ dữ liệu môi trường.
   * `lottie` & `flutter_svg` - Animation và icon vector.
 * **Firebase Suite:** Khai thác toàn diện hệ sinh thái Firebase (Auth, Firestore, Storage, Messaging, Crashlytics, Analytics, Remote Config, Performance).
-
-
-
-
-
