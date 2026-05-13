@@ -1,4 +1,4 @@
-# 🌿 Plant Smart - IoT Plant Doctor (Flutter App)
+# Plant Smart - IoT Plant Doctor (Flutter App)
 
 ![Flutter](https://img.shields.io/badge/Flutter-%2302569B.svg?style=for-the-badge&logo=Flutter&logoColor=white)
 ![Riverpod](https://img.shields.io/badge/Riverpod-%23000000.svg?style=for-the-badge&logo=dart&logoColor=white)
@@ -6,9 +6,9 @@
 
 **Plant Smart** là ứng dụng di động đóng vai trò là trung tâm điều khiển và giám sát cho hệ thống IoT nông nghiệp thông minh. Ứng dụng cho phép người dùng theo dõi tình trạng môi trường, điều khiển thiết bị tưới tiêu tự động và nhận cảnh báo sớm về các loại bệnh trên cây trồng thông qua tích hợp AI.
 
-## 🧾 Báo cáo dự án (Project Report)
+## Báo cáo dự án (Project Report)
 
-### ✅ Mục tiêu
+### Mục tiêu
 * Xây dựng ứng dụng giám sát và điều khiển vườn cây thông minh trên nền tảng di động.
 * Hiển thị dữ liệu cảm biến, trạng thái thiết bị và lịch sử hoạt động theo thời gian thực.
 * Hỗ trợ phát hiện sớm bệnh cây và cung cấp cảnh báo/khuyến nghị chăm sóc.
@@ -16,17 +16,17 @@
 
 ---
 
-## 📱 Các tính năng chính (Key Features)
+## Các tính năng chính (Key Features)
 
-* 🔐 **Đăng nhập & hồ sơ:** Xác thực Google và quản lý thông tin người dùng.
-* 🏡 **Trang chủ khu vườn:** Tổng quan khu vườn, cây trồng và trạng thái hiện tại.
-* 🌡 **Giám sát môi trường:** Nhiệt độ, độ ẩm không khí, độ ẩm đất cập nhật realtime.
-* 💧 **Điều khiển thiết bị:** Bật/tắt bơm thủ công hoặc tự động theo ngưỡng/lịch trình.
-* 🧪 **Chẩn đoán bệnh cây:** Ảnh chụp, lịch sử lần chụp, kết quả phân tích và cảnh báo.
-* 📡 **Cấu hình thiết bị:** Ghép nối và cấu hình Raspberry Pi qua BLE.
-* 💬 **Hỗ trợ người dùng:** Trung tâm hỗ trợ và trợ lý AI tư vấn.
+* **Đăng nhập & hồ sơ:** Xác thực Google và quản lý thông tin người dùng.
+* **Trang chủ khu vườn:** Tổng quan khu vườn, cây trồng và trạng thái hiện tại.
+* **Giám sát môi trường:** Nhiệt độ, độ ẩm không khí, độ ẩm đất cập nhật realtime.
+* **Điều khiển thiết bị:** Bật/tắt bơm thủ công hoặc tự động theo ngưỡng/lịch trình.
+* **Chẩn đoán bệnh cây:** Ảnh chụp, lịch sử lần chụp, kết quả phân tích và cảnh báo.
+* **Cấu hình thiết bị:** Ghép nối và cấu hình Raspberry Pi qua BLE.
+* **Hỗ trợ người dùng:** Trung tâm hỗ trợ và trợ lý AI tư vấn.
 
-## 🖼 Hình ảnh các màn hình (Screenshots)
+## Hình ảnh các màn hình (Screenshots)
 
 <table width="100%">
   <tr>
@@ -93,7 +93,7 @@
 
 ---
 
-## 🛠 Công nghệ & Thư viện sử dụng (Tech Stack)
+## Công nghệ & Thư viện sử dụng (Tech Stack)
 
 Dự án chú trọng áp dụng các best practices của hệ sinh thái Flutter:
 
