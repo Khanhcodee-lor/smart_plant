@@ -32,13 +32,29 @@ class CaptureHistoryListWidget extends StatelessWidget {
       );
     }
 
+    final displayGroups = <List<DetectionItem>>[];
+    final seenTimes = <String>{};
+
+    for (final item in items) {
+      final key = item.time.trim();
+      if (key.isEmpty) {
+        displayGroups.add([item]);
+      } else {
+        if (!seenTimes.contains(key)) {
+          seenTimes.add(key);
+          displayGroups.add(items.where((i) => i.time.trim() == key).toList());
+        }
+      }
+    }
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
+      itemCount: displayGroups.length,
       separatorBuilder: (context, index) => SizedBox(height: 12.h),
       itemBuilder: (context, index) {
-        final item = items[index];
+        final group = displayGroups[index];
+        final item = group.reduce((a, b) => a.confidence > b.confidence ? a : b);
         final isHealthy = isHealthyDisease(item.diseaseClass);
         final hasSnapshot = item.snapshotUrl.trim().isNotEmpty;
 
@@ -51,7 +67,7 @@ class CaptureHistoryListWidget extends StatelessWidget {
                 context: context,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
-                builder: (_) => _CaptureHistoryDetailSheet(item: item),
+                builder: (_) => _CaptureHistoryDetailSheet(items: group),
               );
             },
             child: Ink(
@@ -167,9 +183,9 @@ class CaptureHistoryListWidget extends StatelessWidget {
 }
 
 class _CaptureHistoryDetailSheet extends ConsumerStatefulWidget {
-  final DetectionItem item;
+  final List<DetectionItem> items;
 
-  const _CaptureHistoryDetailSheet({required this.item});
+  const _CaptureHistoryDetailSheet({required this.items});
 
   @override
   ConsumerState<_CaptureHistoryDetailSheet> createState() =>
@@ -182,7 +198,8 @@ class _CaptureHistoryDetailSheetState
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
+    final group = widget.items;
+    final item = group.reduce((a, b) => a.confidence > b.confidence ? a : b);
     final snapshotPath = item.snapshotUrl.trim();
     final shouldResolveSnapshot =
         snapshotPath.isNotEmpty &&
@@ -196,8 +213,7 @@ class _CaptureHistoryDetailSheetState
         : (snapshotPath.isEmpty
               ? const AsyncValue<String>.data('')
               : AsyncValue<String>.data(snapshotPath));
-    final diseaseLabel = translateDiseaseLabel(item.diseaseClass);
-    final isHealthy = isHealthyDisease(item.diseaseClass);
+    final isHealthy = group.every((i) => isHealthyDisease(i.diseaseClass));
 
     return SafeArea(
       top: false,
@@ -317,7 +333,7 @@ class _CaptureHistoryDetailSheetState
                             ? Icons.eco_outlined
                             : Icons.bug_report_outlined,
                         label: 'Bệnh phát hiện',
-                        value: diseaseLabel,
+                        value: group.map((i) => translateDiseaseLabel(i.diseaseClass)).toSet().join('\n'),
                         accentColor: isHealthy
                             ? Colors.green
                             : AppColors.warning,
@@ -334,8 +350,8 @@ class _CaptureHistoryDetailSheetState
                       _HistoryInfoRow(
                         icon: Icons.analytics_outlined,
                         label: 'Độ tin cậy',
-                        value: item.confidence > 0
-                            ? '${(item.confidence * 100).toStringAsFixed(1)}%'
+                        value: group.any((i) => i.confidence > 0)
+                            ? group.where((i) => i.confidence > 0).map((i) => '${translateDiseaseLabel(i.diseaseClass)}: ${(i.confidence * 100).toStringAsFixed(1)}%').join('\n')
                             : 'Chưa có dữ liệu',
                       ),
                     ],
@@ -401,10 +417,11 @@ class _CaptureHistoryDetailSheetState
   }
 
   void _handleAiAnalyzePressed() {
-    final item = widget.item;
-    final diseaseLabel = translateDiseaseLabel(item.diseaseClass);
-    final confidence = item.confidence > 0
-        ? '${(item.confidence * 100).toStringAsFixed(1)}%'
+    final group = widget.items;
+    final item = group.reduce((a, b) => a.confidence > b.confidence ? a : b);
+    final diseaseLabel = group.map((i) => translateDiseaseLabel(i.diseaseClass)).toSet().join(', ');
+    final confidence = group.any((i) => i.confidence > 0)
+        ? group.where((i) => i.confidence > 0).map((i) => '${translateDiseaseLabel(i.diseaseClass)} (${(i.confidence * 100).toStringAsFixed(1)}%)').join(', ')
         : 'Chưa có dữ liệu';
     final capturedAt = item.time.trim().isEmpty
         ? 'Chưa có thời gian'
@@ -439,8 +456,12 @@ Yêu cầu trả lời ngắn gọn theo các mục:
   }
 
   Future<void> _handleDeletePressed() async {
-    final documentPath = widget.item.sourceDocumentPath.trim();
-    if (documentPath.isEmpty) {
+    final documentPaths = widget.items
+        .map((i) => i.sourceDocumentPath.trim())
+        .where((p) => p.isNotEmpty)
+        .toSet();
+
+    if (documentPaths.isEmpty) {
       showDiseaseFeedbackSnackBar(
         context,
         'Không tìm thấy đường dẫn Firebase để xóa',
@@ -457,7 +478,9 @@ Yêu cầu trả lời ngắn gọn theo các mục:
     final navigator = Navigator.of(context);
 
     try {
-      await ref.read(firebaseFirestoreServiceProvider).deleteData(documentPath);
+      await Future.wait(
+        documentPaths.map((path) => ref.read(firebaseFirestoreServiceProvider).deleteData(path))
+      );
       if (!mounted) {
         return;
       }

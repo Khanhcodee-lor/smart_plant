@@ -44,19 +44,21 @@ class CurrentDiseaseCardWidget extends ConsumerWidget {
         }
 
         final translated = translateDiseaseLabel(detection.diseaseClass);
+        final confidencePercent =
+            (detection.confidence * 100).toStringAsFixed(1);
         final prompt =
-            "Cây của tôi đang bị '$translated'. Bạn có thể cho tôi biết nguyên nhân và cách phòng trị bệnh này không?";
+            "Cây của tôi đang bị '$translated' với độ tin cậy $confidencePercent%. "
+            "Bạn có thể cho tôi biết mức độ tin cậy này có đáng lo không, nguyên nhân và cách phòng trị bệnh này không?";
 
         showModalBottomSheet(
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
-          builder: (context) => const AiChatbotSheet(),
+          builder: (context) => AiChatbotSheet(
+            initialMessage: prompt,
+            autoSendInitialMessage: true,
+          ),
         );
-
-        Future.delayed(const Duration(milliseconds: 300), () {
-          ref.read(chatbotControllerProvider.notifier).sendMessage(prompt);
-        });
       },
       borderRadius: BorderRadius.circular(16.r),
       child: Container(

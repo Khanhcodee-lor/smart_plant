@@ -47,8 +47,18 @@ class ChatbotController extends StateNotifier<ChatState> {
       // 2. GỌI FIREBASE CLOUD FUNCTION có tên là 'askChatbot'
       final callable = FirebaseFunctions.instance.httpsCallable('askChatbot');
 
+      // Thêm chỉ dẫn để AI trả lời ngắn gọn, đúng trọng tâm
+      const systemPrefix =
+          '[Hệ thống: Trả lời ngắn gọn, đúng trọng tâm, tối đa 3-5 câu. '
+          'Không liệt kê dài dòng. Nếu cần chi tiết, hỏi người dùng muốn biết thêm không. '
+          'Nếu người dùng hỏi về bệnh cây có kèm độ tin cậy %, hãy đánh giá: '
+          'trên 70% là bệnh nặng cần xử lý gấp, 40-70% là bệnh trung bình cần theo dõi và xử lý, '
+          'dưới 40% là bệnh nhẹ và đưa ra giải pháp phòng ngừa sớm.]\n\n';
+
       // Truyền dữ liệu dạng Map lên Server
-      final result = await callable.call(<String, dynamic>{'text': text});
+      final result = await callable.call(<String, dynamic>{
+        'text': '$systemPrefix$text',
+      });
 
       if (!mounted) return;
 

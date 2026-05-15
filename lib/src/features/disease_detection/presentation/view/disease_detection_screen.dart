@@ -13,6 +13,7 @@ import 'package:app_iot/src/features/disease_detection/presentation/widgets/dise
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
+import 'package:app_iot/src/shared/widgets/app_loading_widget.dart';
 import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,6 +89,12 @@ class DiseaseDetectionScreen extends BaseView {
     );
     final captureSnapshotRefreshKey = ref.watch(
       plantCaptureSnapshotRefreshKeyProvider(plantId),
+    );
+    final isUploadingImage = ref.watch(
+      diseaseImageUploadInFlightProvider(plantId),
+    );
+    final isSendingCapture = ref.watch(
+      plantCaptureCommandInFlightProvider(plantId),
     );
 
     return SizedBox.expand(
@@ -178,6 +185,9 @@ class DiseaseDetectionScreen extends BaseView {
                   final uniqueLatestDetections = _uniqueDetectionsByDisease(
                     latestDetections,
                   );
+                  final uniqueHistoryDetections = _uniqueDetectionsByTime(
+                    history,
+                  );
 
                   return SingleChildScrollView(
                     child: Column(
@@ -255,7 +265,9 @@ class DiseaseDetectionScreen extends BaseView {
                     ),
                   );
                 },
-                loading: () => const Center(child: CircularProgressIndicator()),
+                loading: () => const AppLoadingWidget(
+                  text: 'Đang tải dữ liệu...',
+                ),
                 error: (error, _) =>
                     Center(child: Text('Lỗi tải dữ liệu: $error')),
               ),
@@ -273,6 +285,16 @@ class DiseaseDetectionScreen extends BaseView {
               onAiPressed: () => _showAiAssistant(context),
             ),
           ),
+          if (isUploadingImage)
+            const AppLoadingWidget(
+              text: 'Đang gửi ảnh phân tích...',
+              showOverlay: true,
+            ),
+          if (isSendingCapture)
+            const AppLoadingWidget(
+              text: 'Pi đang chụp và phân tích...',
+              showOverlay: true,
+            ),
         ],
       ),
     );
@@ -402,7 +424,9 @@ class DiseaseDetectionScreen extends BaseView {
           buildDiseaseFeedbackSnackBar(error.toString(), isError: true),
         );
     } finally {
-      inFlight.state = false;
+      if (context.mounted) {
+        inFlight.state = false;
+      }
     }
   }
 
@@ -460,7 +484,9 @@ class DiseaseDetectionScreen extends BaseView {
         isError: true,
       );
     } finally {
-      inFlight.state = false;
+      if (context.mounted) {
+        inFlight.state = false;
+      }
     }
   }
 
@@ -537,7 +563,9 @@ class DiseaseDetectionScreen extends BaseView {
           ),
         );
     } finally {
-      inFlight.state = false;
+      if (context.mounted) {
+        inFlight.state = false;
+      }
     }
   }
 }
@@ -1055,6 +1083,37 @@ bool _firestoreCaptureIsNewerThanItems(
   }
 
   return firestoreTime.compareTo(itemTime) > 0;
+}
+
+List<DetectionItem> _uniqueDetectionsByTime(List<DetectionItem> items) {
+  final uniqueItems = <String, DetectionItem>{};
+  final noTimeItems = <DetectionItem>[];
+
+  for (final item in items) {
+    final key = item.time.trim();
+    if (key.isEmpty) {
+      noTimeItems.add(item);
+      continue;
+    }
+
+    final existing = uniqueItems[key];
+    if (existing == null || item.confidence > existing.confidence) {
+      uniqueItems[key] = item;
+    }
+  }
+
+  final result = [...uniqueItems.values, ...noTimeItems];
+  
+  result.sort((a, b) {
+    final timeA = _tryParseDetectionTime(a.time);
+    final timeB = _tryParseDetectionTime(b.time);
+    if (timeA != null && timeB != null) {
+      return timeB.compareTo(timeA);
+    }
+    return b.time.compareTo(a.time);
+  });
+
+  return result;
 }
 
 List<DetectionItem> _uniqueDetectionsByDisease(List<DetectionItem> items) {

@@ -28,6 +28,10 @@
 	<string>Ứng dụng cần camera để chụp ảnh cây và gửi lên server phân tích bệnh.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Ứng dụng cần truy cập thư viện ảnh để chọn ảnh cây gửi lên server phân tích bệnh.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Ứng dụng cần quyền sử dụng microphone để hỗ trợ trò chuyện bằng giọng nói với AI.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Ứng dụng cần quyền nhận diện giọng nói để chuyển đổi lời nói thành văn bản khi trò chuyện với AI.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
