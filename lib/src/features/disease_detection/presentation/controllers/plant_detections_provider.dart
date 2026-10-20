@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.dart';
+import 'package:app_iot/src/core/services/firebase/firebase_realtime_database_service.dart';
 import 'package:app_iot/src/core/ulits/logger_ulits.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -41,87 +43,230 @@ class _CaptureMetadata {
 
 final plantDetectionsProvider = StreamProvider.autoDispose
     .family<PlantDetectionsData, String>((ref, plantId) {
+      final database = ref.watch(firebaseRealtimeDatabaseServiceProvider);
       final firestore = ref.watch(firebaseFirestoreServiceProvider);
 
       return Stream.multi((controller) {
-        final docDetectionsByPath = <String, PlantDetectionsData>{};
-        final collectionDetectionsByPath = <String, PlantDetectionsData>{};
-        final documentPaths = _detectionDocumentPaths(plantId);
-        final collectionPaths = _detectionCollectionPaths(plantId);
+        var cancelled = false;
+        var realtimeDetections = const PlantDetectionsData();
+        final firestoreDetectionsByPath = <String, PlantDetectionsData>{};
+        final subscriptions = <StreamSubscription<dynamic>>[];
 
         void emitMerged() {
-          controller.add(
-            _mergeDetections(
-              _mergeDetectionsByPath(docDetectionsByPath),
-              _mergeDetectionsByPath(collectionDetectionsByPath),
-            ),
-          );
-        }
-
-        void clearPath(String path) {
-          if (documentPaths.contains(path)) {
-            docDetectionsByPath[path] = const PlantDetectionsData();
-          } else if (collectionPaths.contains(path)) {
-            collectionDetectionsByPath[path] = const PlantDetectionsData();
-          }
-        }
-
-        void handleError(String path, Object error, StackTrace stackTrace) {
-          clearPath(path);
-          if (_isPermissionDenied(error)) {
-            LoggerUtils.i('Firestore path denied and ignored: $path');
-            emitMerged();
+          if (cancelled) {
             return;
           }
 
-          LoggerUtils.e(
-            'Failed to read Firestore path: $path',
-            error,
-            stackTrace,
+          final firestoreDetections = _mergeDetectionsByPath(
+            firestoreDetectionsByPath,
           );
+          controller.add(
+            _mergeDetections(firestoreDetections, realtimeDetections),
+          );
+        }
+
+        void handleFirestoreError(
+          String path,
+          Object error,
+          StackTrace stackTrace,
+        ) {
+          firestoreDetectionsByPath[path] = const PlantDetectionsData();
+          if (error is FirebaseException && error.code == 'permission-denied') {
+            LoggerUtils.i('Firestore path denied and ignored: $path');
+          } else {
+            LoggerUtils.e(
+              'Failed to read Firestore path: $path',
+              error,
+              stackTrace,
+            );
+          }
           emitMerged();
         }
 
-        emitMerged();
-
-        final subscriptions = <StreamSubscription<dynamic>>[
-          for (final path in documentPaths)
-            firestore
-                .documentStream(path)
-                .listen(
-                  (data) {
-                    final parsed = _parseDetectionsFromDocument(data);
-                    _logParsedDetections(path, parsed);
-                    docDetectionsByPath[path] = parsed;
-                    emitMerged();
-                  },
-                  onError: (error, stackTrace) {
-                    handleError(path, error, stackTrace);
-                  },
-                ),
-          for (final path in collectionPaths)
+        for (final path in _firestoreCaptureCollectionPaths(plantId)) {
+          subscriptions.add(
             firestore
                 .collectionStreamWithIds(path)
                 .listen(
                   (documents) {
                     final parsed = _parseDetectionsFromCollection(documents);
                     _logParsedDetections(path, parsed);
-                    collectionDetectionsByPath[path] = parsed;
+                    firestoreDetectionsByPath[path] = parsed;
                     emitMerged();
                   },
-                  onError: (error, stackTrace) {
-                    handleError(path, error, stackTrace);
+                  onError: (Object error, StackTrace stackTrace) {
+                    handleFirestoreError(path, error, stackTrace);
                   },
                 ),
-        ];
+          );
+        }
 
+        for (final path in _firestorePlantDocumentPaths(plantId)) {
+          subscriptions.add(
+            firestore
+                .documentStream(path)
+                .listen(
+                  (data) {
+                    final parsed = _parseDetectionsFromDocument(data);
+                    _logParsedDetections(path, parsed);
+                    firestoreDetectionsByPath[path] = parsed;
+                    emitMerged();
+                  },
+                  onError: (Object error, StackTrace stackTrace) {
+                    handleFirestoreError(path, error, stackTrace);
+                  },
+                ),
+          );
+        }
+
+        Future<void> poll() async {
+          while (!cancelled) {
+            try {
+              final value = await _readRealtimePlantValue(database, plantId);
+              final parsed = _parseDetectionsFromRealtimePlant(
+                value,
+                plantId: plantId,
+              );
+              _logParsedDetections(
+                'Realtime Database: plants/$plantId/plant_captures',
+                parsed,
+              );
+              realtimeDetections = parsed;
+              emitMerged();
+            } catch (error, stackTrace) {
+              LoggerUtils.e(
+                'Failed to read Realtime Database detections for $plantId',
+                error,
+                stackTrace,
+              );
+              realtimeDetections = const PlantDetectionsData();
+              emitMerged();
+            }
+
+            await Future<void>.delayed(const Duration(seconds: 3));
+          }
+        }
+
+        unawaited(poll());
         controller.onCancel = () async {
+          cancelled = true;
           for (final subscription in subscriptions) {
             await subscription.cancel();
           }
         };
       });
     });
+
+List<String> _firestoreCaptureCollectionPaths(String plantId) {
+  final normalizedPlantId = plantId.trim();
+  return [
+    'plants/$normalizedPlantId/plant_captures',
+    'plant/$normalizedPlantId/plant_captures',
+  ];
+}
+
+List<String> _firestorePlantDocumentPaths(String plantId) {
+  final normalizedPlantId = plantId.trim();
+  return ['plants/$normalizedPlantId', 'plant/$normalizedPlantId'];
+}
+
+Future<dynamic> _readRealtimePlantValue(
+  FirebaseRealtimeDatabaseService database,
+  String plantId,
+) async {
+  final normalizedPlantId = plantId.trim();
+  for (final path in [
+    'plants/$normalizedPlantId',
+    'plant/$normalizedPlantId',
+  ]) {
+    final capturesPath = '$path/plant_captures';
+    try {
+      final captures = await database.getData(capturesPath);
+      if ((captures is Map && captures.isNotEmpty) ||
+          (captures is List && captures.isNotEmpty)) {
+        return {'plant_captures': captures};
+      }
+    } catch (_) {
+      // Older database rules may allow reading the plant node but not this
+      // child directly. Fall back to the parent node in that case.
+    }
+
+    final value = await database.getData(path);
+    if (value is Map && value.isNotEmpty) {
+      return value;
+    }
+  }
+  return null;
+}
+
+PlantDetectionsData _parseDetectionsFromRealtimePlant(
+  dynamic value, {
+  required String plantId,
+}) {
+  final plant = _asMap(value);
+  final nestedDetections = _asMap(
+    plant['detections'] ?? plant['diseaseDetection'] ?? plant['detection'],
+  );
+  final source = nestedDetections.isNotEmpty ? nestedDetections : plant;
+  final plantData = _parseDetectionsFromDocument(_asStringMap(source));
+  final captures =
+      plant['plant_captures'] ?? plant['plantCaptures'] ?? plant['captures'];
+  final captureData = _parseRealtimeCaptureCollection(
+    captures,
+    collectionPath: 'plants/${plantId.trim()}/plant_captures',
+  );
+
+  return _mergeDetections(plantData, captureData);
+}
+
+PlantDetectionsData _parseRealtimeCaptureCollection(
+  dynamic value, {
+  required String collectionPath,
+}) {
+  if (value is! Map && value is! List) {
+    return const PlantDetectionsData();
+  }
+
+  final captures = <FirestoreDocumentData>[];
+
+  void addCapture(String id, dynamic data) {
+    final capture = _asMap(data);
+    if (capture.isEmpty) {
+      return;
+    }
+
+    captures.add(
+      FirestoreDocumentData(
+        id: id,
+        path: '$collectionPath/$id',
+        data: _asStringMap(capture),
+      ),
+    );
+  }
+
+  if (value is List) {
+    for (var index = 0; index < value.length; index++) {
+      addCapture(index.toString(), value[index]);
+    }
+  } else {
+    final map = _asMap(value);
+    if (_isRealtimeCaptureDocument(map)) {
+      addCapture('latest', map);
+    } else {
+      for (final entry in map.entries) {
+        addCapture(entry.key.toString(), entry.value);
+      }
+    }
+  }
+
+  return _parseDetectionsFromCollection(captures);
+}
+
+bool _isRealtimeCaptureDocument(Map<dynamic, dynamic> data) {
+  return _diseaseClassFromMap(data) != null ||
+      _snapshotUrlFromMap(data, fallbackSnapshotUrl: '').trim().isNotEmpty ||
+      _detectionTimeFromMap(data, fallbackTime: '').trim().isNotEmpty;
+}
 
 @visibleForTesting
 PlantDetectionsData debugParsePlantDetectionsDocument(
@@ -307,6 +452,7 @@ PlantDetectionsData _parseDetectionsFromCollection(
     }
 
     final noDiseaseDetection = _toNoDiseaseDetectionItem(
+      data: normalized,
       fallbackTime: detectedTime,
       fallbackSnapshotUrl: snapshotUrl,
       sourceDocumentPath: sourceDocumentPath,
@@ -527,9 +673,23 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
   final history = <DetectionItem>[];
 
   for (final source in sources) {
-    if (source is List) {
+    final decodedSource = _decodeStructuredPayload(source);
+    if (decodedSource is String) {
+      final item = _detectionItemFromLabel(
+        decodedSource,
+        fallbackTime: fallbackTime,
+        fallbackSnapshotUrl: fallbackSnapshotUrl,
+        sourceDocumentPath: sourceDocumentPath,
+      );
+      if (item != null) {
+        history.add(item);
+      }
+      continue;
+    }
+
+    if (decodedSource is List) {
       final classItems = _extractDetectionItemsFromClassArray(
-        source,
+        decodedSource,
         fallbackTime: fallbackTime,
         fallbackSnapshotUrl: fallbackSnapshotUrl,
         sourceDocumentPath: sourceDocumentPath,
@@ -539,7 +699,7 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
         continue;
       }
 
-      for (final item in source) {
+      for (final item in decodedSource) {
         final detections = _extractDetectionItemsFromMap(
           _asMap(item),
           fallbackTime: fallbackTime,
@@ -552,10 +712,10 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
       continue;
     }
 
-    if (source is Map) {
+    if (decodedSource is Map) {
       history.addAll(
         _extractDetectionItemsFromMap(
-          _asMap(source),
+          _asMap(decodedSource),
           fallbackTime: fallbackTime,
           fallbackSnapshotUrl: fallbackSnapshotUrl,
           sourceDocumentPath: sourceDocumentPath,
@@ -566,6 +726,80 @@ List<DetectionItem> _extractDetectionItemsFromCandidates(
   }
 
   return history;
+}
+
+dynamic _decodeStructuredPayload(dynamic value) {
+  var decoded = value;
+  for (var depth = 0; depth < 3 && decoded is String; depth++) {
+    try {
+      decoded = jsonDecode(decoded.trim());
+    } on FormatException {
+      break;
+    }
+  }
+  return decoded;
+}
+
+DetectionItem? _detectionItemFromLabel(
+  String value, {
+  required String fallbackTime,
+  required String fallbackSnapshotUrl,
+  required String sourceDocumentPath,
+}) {
+  final label = value.trim();
+  if (label.isEmpty ||
+      label.contains('://') ||
+      DateTime.tryParse(label) != null ||
+      !_looksLikeDiseaseClass(label)) {
+    return null;
+  }
+
+  final confidenceMatch = RegExp(
+    r'^(.*?)\s*\(?\s*(\d+(?:\.\d+)?)\s*%\s*\)?\s*$',
+  ).firstMatch(label);
+  final diseaseClass = (confidenceMatch?.group(1) ?? label).trim();
+  if (diseaseClass.isEmpty) {
+    return null;
+  }
+
+  final parsedConfidence = confidenceMatch == null
+      ? 0.0
+      : _normalizeConfidence(confidenceMatch.group(2));
+  final isNoDisease = _isNoDiseaseClass(diseaseClass);
+  return DetectionItem(
+    diseaseClass: isNoDisease ? _noDiseaseDetectedLabel : diseaseClass,
+    confidence: isNoDisease ? 0 : parsedConfidence,
+    time: fallbackTime,
+    snapshotUrl: fallbackSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
+  );
+}
+
+bool _looksLikeDiseaseClass(String value) {
+  final normalized = value.trim().toLowerCase();
+  return [
+    'khoe manh',
+    'khỏe mạnh',
+    'khong phat hien benh',
+    'không phát hiện bệnh',
+    'tomato',
+    'leaf',
+    'septoria',
+    'blight',
+    'mosaic',
+    'bacterial spot',
+    'healthy',
+    'disease',
+    'cà chua',
+    'ca chua',
+    'lá',
+    'bệnh',
+    'benh',
+    'đốm',
+    'dom',
+    'mốc',
+    'moc',
+  ].any(normalized.contains);
 }
 
 List<DetectionItem> _extractDetectionItemsFromMap(
@@ -606,6 +840,16 @@ List<DetectionItem> _extractDetectionItemsFromMap(
     return <DetectionItem>[directDetection];
   }
 
+  final keyedDiseaseItems = _extractKeyedDiseaseItems(
+    data,
+    fallbackTime: localTime,
+    fallbackSnapshotUrl: localSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
+  );
+  if (keyedDiseaseItems.isNotEmpty) {
+    return keyedDiseaseItems;
+  }
+
   final nestedMapItems = <DetectionItem>[];
   for (final value in data.values) {
     if (value is! Map && value is! List) {
@@ -626,6 +870,43 @@ List<DetectionItem> _extractDetectionItemsFromMap(
   return nestedMapItems;
 }
 
+List<DetectionItem> _extractKeyedDiseaseItems(
+  Map<dynamic, dynamic> data, {
+  required String fallbackTime,
+  required String fallbackSnapshotUrl,
+  required String sourceDocumentPath,
+}) {
+  final items = <DetectionItem>[];
+  for (final entry in data.entries) {
+    final diseaseClass = entry.key.toString().trim();
+    if (!_looksLikeDiseaseClass(diseaseClass)) {
+      continue;
+    }
+
+    final value = _decodeStructuredPayload(entry.value);
+    final valueMap = _asMap(value);
+    final confidence = _normalizeConfidence(
+      value is num
+          ? value
+          : _firstNonNull([
+              valueMap['confidence'],
+              valueMap['score'],
+              valueMap['probability'],
+            ]),
+    );
+    items.add(
+      DetectionItem(
+        diseaseClass: diseaseClass,
+        confidence: confidence,
+        time: fallbackTime,
+        snapshotUrl: fallbackSnapshotUrl,
+        sourceDocumentPath: sourceDocumentPath,
+      ),
+    );
+  }
+  return items;
+}
+
 DetectionItem? _toDetectionItem(
   Map<dynamic, dynamic> data, {
   String fallbackTime = '',
@@ -636,20 +917,37 @@ DetectionItem? _toDetectionItem(
     return null;
   }
 
-  final diseaseClass = _diseaseClassFromMap(data);
-  final confidence = _normalizeConfidence(
-    _firstNonNull([
-      data['confidence'],
-      data['score'],
-      data['probability'],
-      data['best_confidence'],
-      data['highest_confidence'],
-      data['max_confidence'],
-      data['avg_confidence'],
-      _firstNumericFromArrayLike(data['confidences']),
-      _firstNumericFromArrayLike(data['all_confidences']),
-    ]),
-  );
+  final rawDiseaseClass = _diseaseClassFromMap(data);
+  final status = data['status']?.toString().trim().toLowerCase() ?? '';
+  final statusIndicatesNoDisease = const {
+    'no_detection',
+    'no detection',
+    'no_disease',
+    'no disease',
+    'healthy',
+    'clean',
+  }.contains(status.replaceAll('-', '_'));
+  final isNoDisease =
+      statusIndicatesNoDisease ||
+      (rawDiseaseClass != null && _isNoDiseaseClass(rawDiseaseClass));
+  final diseaseClass = rawDiseaseClass == null && !statusIndicatesNoDisease
+      ? null
+      : (isNoDisease ? _noDiseaseDetectedLabel : rawDiseaseClass);
+  final confidence = isNoDisease
+      ? 0.0
+      : _normalizeConfidence(
+          _firstNonNull([
+            data['confidence'],
+            data['score'],
+            data['probability'],
+            data['best_confidence'],
+            data['highest_confidence'],
+            data['max_confidence'],
+            data['avg_confidence'],
+            _firstNumericFromArrayLike(data['confidences']),
+            _firstNumericFromArrayLike(data['all_confidences']),
+          ]),
+        );
   final time = _stringifyTime(
     _firstNonNull([
       data['annotated_frame_local_saved_at'],
@@ -697,11 +995,13 @@ DetectionItem? _toDetectionItem(
 }
 
 DetectionItem? _toNoDiseaseDetectionItem({
+  required Map<dynamic, dynamic> data,
   required String fallbackTime,
   required String fallbackSnapshotUrl,
   required String sourceDocumentPath,
 }) {
-  if (fallbackTime.trim().isEmpty && fallbackSnapshotUrl.trim().isEmpty) {
+  if (!_explicitlyReportsNoDisease(data) ||
+      (fallbackTime.trim().isEmpty && fallbackSnapshotUrl.trim().isEmpty)) {
     return null;
   }
 
@@ -714,50 +1014,141 @@ DetectionItem? _toNoDiseaseDetectionItem({
   );
 }
 
-List<String> _detectionDocumentPaths(String plantId) {
-  return [
-    for (final id in _detectionIds(plantId)) ...[
-      'plant/$id',
-      'plants/$id',
-      'plant/$id/detections/latest',
-      'plants/$id/detections/latest',
-      'plant/$id/detections/current',
-      'plants/$id/detections/current',
-      'plant/$id/detection/latest',
-      'plants/$id/detection/latest',
-      'plant/$id/detection/current',
-      'plants/$id/detection/current',
-      'plant/$id/latest_detection/current',
-      'plants/$id/latest_detection/current',
-    ],
+bool _explicitlyReportsNoDisease(Map<dynamic, dynamic> data) {
+  const resultFields = [
+    'latest_objects',
+    'latestObjects',
+    'detected_objects',
+    'detectedObjects',
+    'disease_list_unique_top',
+    'disease_list',
+    'disease_objects',
+    'objects',
+    'detections',
+    'diseases',
+    'disease_result',
+    'diseaseResult',
+    'disease_results',
+    'diseaseResults',
+    'disease_result_json',
+    'diseaseResultJson',
+    'disease_json',
+    'diseaseJson',
+    'detection_result',
+    'detectionResult',
+    'detection_results',
+    'detectionResults',
+    'detection_result_json',
+    'detectionResultJson',
+    'detection_json',
+    'detectionJson',
+    'latest_result',
+    'latestResult',
+    'all_detections',
+    'allDetections',
+    'predictions',
+    'results',
   ];
+  if (resultFields.any((key) => _hasPayload(data[key]))) {
+    return false;
+  }
+
+  final status = data['status']?.toString().trim().toLowerCase();
+  if (status != null &&
+      const {
+        'no_detection',
+        'no detection',
+        'no_disease',
+        'no disease',
+      }.contains(status.replaceAll('-', '_'))) {
+    return true;
+  }
+
+  final objectCount = _firstNonNull([
+    data['latest_total_objects'],
+    data['latestTotalObjects'],
+    data['total_objects'],
+    data['totalObjects'],
+    data['object_count'],
+    data['objectCount'],
+    data['detection_count'],
+    data['detectionCount'],
+  ]);
+  final parsedObjectCount = _nullableDouble(objectCount);
+  if (parsedObjectCount != null && parsedObjectCount <= 0) {
+    return true;
+  }
+
+  final diseaseDetected = _firstNonNull([
+    data['disease_detected'],
+    data['diseaseDetected'],
+    data['has_disease'],
+    data['hasDisease'],
+  ]);
+  if (diseaseDetected != null &&
+      const {
+        'false',
+        '0',
+        'no',
+      }.contains(diseaseDetected.toString().trim().toLowerCase())) {
+    return true;
+  }
+
+  final isHealthy = _firstNonNull([data['is_healthy'], data['isHealthy']]);
+  if (isHealthy != null &&
+      const {
+        'true',
+        '1',
+        'yes',
+      }.contains(isHealthy.toString().trim().toLowerCase())) {
+    return true;
+  }
+
+  const classArrayFields = [
+    'all_classes_detected_vi',
+    'all_classes_detected',
+    'all_classes_detected_en',
+    'latest_diseases',
+    'latestDiseases',
+  ];
+  final classArrays = classArrayFields
+      .where(data.containsKey)
+      .map((key) => data[key])
+      .toList();
+  return classArrays.isNotEmpty && classArrays.every(_isEmptyArrayLike);
 }
 
-List<String> _detectionCollectionPaths(String plantId) {
-  return [
-    for (final id in _detectionIds(plantId)) ...[
-      'plant/$id/detections',
-      'plants/$id/detections',
-      'plant/$id/detection',
-      'plants/$id/detection',
-      'plant/$id/disease_detections',
-      'plants/$id/disease_detections',
-      'plant/$id/diseaseDetections',
-      'plants/$id/diseaseDetections',
-    ],
-  ];
+bool _hasPayload(dynamic value) {
+  final decoded = _decodeStructuredPayload(value);
+  if (decoded is Map) {
+    return decoded.isNotEmpty;
+  }
+  if (decoded is List) {
+    return decoded.isNotEmpty;
+  }
+  return decoded is String && decoded.trim().isNotEmpty;
 }
 
-List<String> _detectionIds(String plantId) {
-  final ids = <String>{};
-  final normalized = plantId.trim();
-  if (normalized.isNotEmpty) {
-    ids.add(normalized);
+double? _nullableDouble(dynamic value) {
+  if (value is num) {
+    return value.toDouble();
   }
-  if (ids.isEmpty) {
-    ids.add('all');
+  if (value is String) {
+    return double.tryParse(value.trim());
   }
-  return ids.toList(growable: false);
+  return null;
+}
+
+bool _isEmptyArrayLike(dynamic value) {
+  if (value is List) {
+    return value.every(
+      (item) => item == null || item.toString().trim().isEmpty,
+    );
+  }
+  if (value is Map) {
+    return value.isEmpty;
+  }
+  return false;
 }
 
 List<DetectionItem> _extractDetectionItemsFromClassArray(
@@ -835,7 +1226,10 @@ List<DetectionItem> _hydrateDetections(
 List<dynamic> _detectionCandidateSources(Map<dynamic, dynamic> data) {
   return [
     data['latest'],
+    data['latest_detection'],
     data['latestDetection'],
+    data['latest_detections'],
+    data['latestDetections'],
     data['currentDetection'],
     data['data'],
     data['latest_objects'],
@@ -852,6 +1246,38 @@ List<dynamic> _detectionCandidateSources(Map<dynamic, dynamic> data) {
     data['latestDiseases'],
     data['diseaseDetection'],
     data['detection'],
+    data['disease_result'],
+    data['diseaseResult'],
+    data['disease_results'],
+    data['diseaseResults'],
+    data['disease_result_json'],
+    data['diseaseResultJson'],
+    data['disease_json'],
+    data['diseaseJson'],
+    data['diseases_detected'],
+    data['diseasesDetected'],
+    data['detected_diseases'],
+    data['detectedDiseases'],
+    data['latest_disease'],
+    data['latestDisease'],
+    data['latest_disease_name'],
+    data['latestDiseaseName'],
+    data['detected_disease'],
+    data['detectedDisease'],
+    data['top_disease'],
+    data['topDisease'],
+    data['detection_result'],
+    data['detectionResult'],
+    data['detection_results'],
+    data['detectionResults'],
+    data['detection_result_json'],
+    data['detectionResultJson'],
+    data['detection_json'],
+    data['detectionJson'],
+    data['latest_result'],
+    data['latestResult'],
+    data['all_detections'],
+    data['allDetections'],
     data['predictions'],
     data['results'],
     data['all_classes_detected_vi'],
@@ -913,6 +1339,7 @@ String _snapshotUrlFromMap(
         _inlineImageDataCandidate(data['result_frame_base64']),
         _inlineImageDataCandidate(data['result_image_base64']),
         data['annotated_frame_storage_path'],
+        data['annotated_storage_path'],
         data['latest_annotated_frame_storage_path'],
         data['frame_storage_path'],
         data['annotatedFrameStoragePath'],
@@ -1200,12 +1627,34 @@ int _compareDetectionByNewest(DetectionItem a, DetectionItem b) {
     return stringTimeCompare;
   }
 
+  final aIsNoDisease = _isNoDiseaseClass(a.diseaseClass);
+  final bIsNoDisease = _isNoDiseaseClass(b.diseaseClass);
+  if (aIsNoDisease != bIsNoDisease) {
+    return aIsNoDisease ? 1 : -1;
+  }
+
   final confidenceCompare = b.confidence.compareTo(a.confidence);
   if (confidenceCompare != 0) {
     return confidenceCompare;
   }
 
   return a.diseaseClass.compareTo(b.diseaseClass);
+}
+
+bool _isNoDiseaseClass(String diseaseClass) {
+  final normalized = diseaseClass
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ');
+  return normalized == 'healthy' ||
+      normalized == 'tomato healthy' ||
+      normalized == 'no disease detected' ||
+      normalized == 'khong phat hien benh' ||
+      normalized == 'không phát hiện bệnh' ||
+      normalized.contains('healthy') ||
+      normalized.contains('khoe manh') ||
+      normalized.contains('khỏe mạnh');
 }
 
 DateTime? _tryParseDateTime(String value) {
@@ -1245,6 +1694,12 @@ Map<dynamic, dynamic> _asMap(dynamic value) {
   return <dynamic, dynamic>{};
 }
 
+Map<String, dynamic> _asStringMap(Map<dynamic, dynamic> value) {
+  return <String, dynamic>{
+    for (final entry in value.entries) entry.key.toString(): entry.value,
+  };
+}
+
 dynamic _firstNonNull(List<dynamic> candidates) {
   for (final candidate in candidates) {
     if (candidate != null) {
@@ -1266,6 +1721,14 @@ String? _firstNonEmptyString(List<dynamic> candidates) {
 
 String? _diseaseClassFromMap(Map<dynamic, dynamic> data) {
   return _firstNonEmptyString([
+    data['pest_type'],
+    data['pestType'],
+    data['disease_class_vi'],
+    data['diseaseClassVi'],
+    data['disease_class_name'],
+    data['diseaseClassName'],
+    data['class_label'],
+    data['classLabel'],
     data['class_name_vi'],
     data['class_vi'],
     data['label_vi'],
@@ -1275,8 +1738,21 @@ String? _diseaseClassFromMap(Map<dynamic, dynamic> data) {
     data['class'],
     data['label'],
     data['disease'],
+    data['disease_class'],
     data['diseaseClass'],
     data['disease_name'],
+    data['disease_label'],
+    data['diseaseLabel'],
+    data['latest_disease'],
+    data['latestDisease'],
+    data['latest_disease_name'],
+    data['latestDiseaseName'],
+    data['detected_disease'],
+    data['detectedDisease'],
+    data['top_disease'],
+    data['topDisease'],
+    data['predicted_class'],
+    data['predictedClass'],
     _firstStringFromArrayLike(data['all_classes_detected_vi']),
     _firstStringFromArrayLike(data['all_classes_detected']),
     data['class_name_en'],
@@ -1428,21 +1904,17 @@ double? _firstNumericFromArrayLike(dynamic value) {
   return null;
 }
 
-bool _isPermissionDenied(Object error) {
-  return error is FirebaseException && error.code == 'permission-denied';
-}
-
 void _logParsedDetections(String path, PlantDetectionsData data) {
   final latestClasses = data.latestDetections
       .map((item) => item.diseaseClass)
       .join(', ');
   if (latestClasses.isEmpty) {
-    LoggerUtils.d('Firestore detections empty at $path');
+    LoggerUtils.d('Detections empty at $path');
     return;
   }
 
   LoggerUtils.d(
-    'Firestore detections loaded from $path: [$latestClasses], '
+    'Detections loaded from $path: [$latestClasses], '
     'history=${data.history.length}',
   );
 }

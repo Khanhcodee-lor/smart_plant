@@ -274,6 +274,160 @@ void main() {
     },
   );
 
+  test('metadata-only capture does not become a no-disease result', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'image-only',
+        path: 'plants/tomato_001/plant_captures/image-only',
+        data: {
+          'annotated_frame_storage_path': 'captures/annotated.jpg',
+          'captured_at': '2026-10-15T21:53:03',
+        },
+      ),
+    ]);
+
+    expect(parsed.latestSnapshotUrl, 'captures/annotated.jpg');
+    expect(parsed.latestDetection, isNull);
+    expect(parsed.history, isEmpty);
+  });
+
+  test('capture disease label wins over stale zero-object summary', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'capture',
+        path: 'plants/tomato_001/plant_captures/capture',
+        data: {
+          'latest_total_objects': 0,
+          'all_classes_detected': <String>[],
+          'latest_objects': [
+            {'disease_class_name': 'Tomato leaf septoria', 'confidence': 0.62},
+          ],
+          'annotated_frame_storage_path': 'captures/annotated.jpg',
+          'captured_at': '2026-10-15T21:53:03',
+        },
+      ),
+    ]);
+
+    expect(parsed.latestDetection?.diseaseClass, 'Tomato leaf septoria');
+    expect(parsed.latestDetection?.confidence, 0.62);
+    expect(parsed.latestSnapshotUrl, 'captures/annotated.jpg');
+  });
+
+  test(
+    'disease result wins when clean and disease documents share a timestamp',
+    () {
+      final parsed = debugParsePlantDetectionsCollection([
+        const FirestoreDocumentData(
+          id: 'clean',
+          path: 'plants/tomato_001/plant_captures/clean',
+          data: {
+            'latest_total_objects': 0,
+            'all_classes_detected': <String>[],
+            'captured_at': '2026-10-15T21:53:03',
+          },
+        ),
+        const FirestoreDocumentData(
+          id: 'disease',
+          path: 'plants/tomato_001/plant_captures/disease',
+          data: {
+            'class_name': 'Tomato leaf septoria',
+            'confidence': 0.62,
+            'captured_at': '2026-10-15T21:53:03',
+          },
+        ),
+      ]);
+
+      expect(parsed.latestDetection?.diseaseClass, 'Tomato leaf septoria');
+      expect(
+        parsed.latestDetections.single.diseaseClass,
+        'Tomato leaf septoria',
+      );
+    },
+  );
+
+  test('parse JSON string and class score map capture payloads', () {
+    final jsonPayload = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'json-result',
+        path: 'plants/tomato_001/plant_captures/json-result',
+        data: {
+          'latest_objects':
+              '[{"class_name":"Tomato leaf septoria",'
+              '"confidence":0.62}]',
+          'captured_at': '2026-10-15T21:53:03',
+        },
+      ),
+    ]);
+    final keyedPayload = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'class-scores',
+        path: 'plants/tomato_001/plant_captures/class-scores',
+        data: {
+          'latest_objects': {'Tomato leaf septoria': 0.62},
+          'captured_at': '2026-10-15T21:53:03',
+        },
+      ),
+    ]);
+
+    expect(jsonPayload.latestDetection?.diseaseClass, 'Tomato leaf septoria');
+    expect(jsonPayload.latestDetection?.confidence, 0.62);
+    expect(keyedPayload.latestDetection?.diseaseClass, 'Tomato leaf septoria');
+    expect(keyedPayload.latestDetection?.confidence, 0.62);
+  });
+
+  test('parse disease result stored as a confidence label string', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'label-result',
+        path: 'plants/tomato_001/plant_captures/label-result',
+        data: {
+          'disease_result': 'Tomato leaf septoria (62%)',
+          'captured_at': '2026-10-15T21:53:03',
+        },
+      ),
+    ]);
+
+    expect(parsed.latestDetection?.diseaseClass, 'Tomato leaf septoria');
+    expect(parsed.latestDetection?.confidence, 0.62);
+  });
+
+  test('parse the pest_type schema used by tomato_001 captures', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'healthy',
+        path: 'plants/tomato_001/plant_captures/healthy',
+        data: {
+          'captured_at': '2026-10-15T13:59:29.849Z',
+          'pest_type': 'Cây khỏe mạnh (Healthy)',
+          'confidence': '1',
+          'status': 'no_detection',
+        },
+      ),
+      const FirestoreDocumentData(
+        id: 'septoria',
+        path: 'plants/tomato_001/plant_captures/septoria',
+        data: {
+          'captured_at': '2026-10-15T14:53:03.053Z',
+          'pest_type': 'Đốm lá Septoria',
+          'confidence': 0.8,
+          'severity': 'medium',
+          'status': 'detected',
+          'annotated_image_url':
+              'https://firebasestorage.googleapis.com/v0/b/app/o/septoria.jpg',
+        },
+      ),
+    ]);
+
+    expect(parsed.latestDetection?.diseaseClass, 'Đốm lá Septoria');
+    expect(parsed.latestDetection?.confidence, 0.8);
+    expect(parsed.latestDetection?.snapshotUrl, contains('septoria.jpg'));
+    expect(parsed.latestCapturedAt, isNotEmpty);
+    expect(
+      parsed.history.map((item) => item.diseaseClass),
+      contains('Không phát hiện bệnh'),
+    );
+  });
+
   test(
     'new snapshot-only collection document replaces old disease on latest UI',
     () {

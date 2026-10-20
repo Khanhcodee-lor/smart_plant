@@ -1,9 +1,6 @@
-import 'dart:async';
-
-import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.dart';
+import 'package:app_iot/src/core/services/firebase/firebase_realtime_database_service.dart';
 import 'package:app_iot/src/core/ulits/logger_ulits.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'plant_remote_data_source.g.dart';
@@ -13,106 +10,133 @@ abstract class PlantRemoteDataSource {
 }
 
 class PlantRemoteDataSourceImpl implements PlantRemoteDataSource {
-  final FirebaseFirestoreService _firestore;
+  PlantRemoteDataSourceImpl(this._database);
 
-  PlantRemoteDataSourceImpl(this._firestore);
+  final FirebaseRealtimeDatabaseService _database;
+  static const _knownPlantIds = ['tomato_001'];
 
   @override
-  Stream<List<Plant>> getPlantsStream() {
-    return Stream.multi((controller) {
-      var directPlants = _fallbackKnownPlants();
-      final directDocumentPaths = _knownPlantDocumentPaths();
-      final pendingPaths = directDocumentPaths.toSet();
-
-      void emitMerged() {
-        final merged = <String, Plant>{};
-        for (final plant in directPlants.values) {
-          merged[plant.id] = plant;
-        }
-
-        if (merged.isEmpty && pendingPaths.isNotEmpty) {
-          return;
-        }
-
-        final plants = merged.values.toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
-        controller.add(plants);
-      }
-
-      void handleError(String path, Object error, StackTrace stackTrace) {
-        pendingPaths.remove(path);
-        if (error is FirebaseException && error.code == 'permission-denied') {
-          LoggerUtils.i('Firestore plants path denied and ignored: $path');
-          emitMerged();
-          return;
-        }
-
+  Stream<List<Plant>> getPlantsStream() async* {
+    while (true) {
+      try {
+        final plants = await _readPlants();
+        yield plants;
+      } catch (error, stackTrace) {
         LoggerUtils.e(
-          'Failed to read Firestore plants path: $path',
+          'Failed to read Realtime Database plants',
           error,
           stackTrace,
         );
-        emitMerged();
+        yield const <Plant>[];
       }
 
-      final documentSubscriptions = <StreamSubscription<Map<String, dynamic>?>>[
-        for (final path in directDocumentPaths)
-          _firestore
-              .documentStream(path)
-              .listen(
-                (data) {
-                  pendingPaths.remove(path);
-                  directPlants = _upsertDirectPlant(directPlants, path, data);
-                  emitMerged();
-                },
-                onError: (error, stackTrace) {
-                  handleError(path, error, stackTrace);
-                },
-              ),
-      ];
-
-      controller.onCancel = () async {
-        for (final subscription in documentSubscriptions) {
-          await subscription.cancel();
-        }
-      };
-    });
+      await Future<void>.delayed(const Duration(seconds: 3));
+    }
   }
 
-  Map<String, Plant> _upsertDirectPlant(
-    Map<String, Plant> current,
-    String path,
-    Map<String, dynamic>? data,
-  ) {
-    final next = Map<String, Plant>.from(current);
-    final id = path.split('/').last;
-    if (data == null) {
-      next[path] = _fallbackPlant(id);
-      return next;
+  Future<List<Plant>> _readPlants() async {
+    final merged = <String, Plant>{};
+    Object? lastReadError;
+    StackTrace? lastReadStackTrace;
+
+    void rememberReadError(Object error, StackTrace stackTrace) {
+      lastReadError ??= error;
+      lastReadStackTrace ??= stackTrace;
     }
 
-    next[path] = Plant.fromFirestore(id, data);
-    return next;
+    // The IoT backend stores plant data under the Realtime Database root
+    // `plants`. Keep `plant` as a compatibility path for older devices.
+    for (final rootPath in const ['plants', 'plant']) {
+      dynamic value;
+      try {
+        value = await _database.getData(rootPath);
+      } catch (error, stackTrace) {
+        rememberReadError(error, stackTrace);
+        continue;
+      }
+
+      if (value is! Map) {
+        continue;
+      }
+
+      _addPlantsFromMap(merged, value);
+    }
+
+    // A ruleset can allow reads at the plant path while denying a read of the
+    // whole root. Try the configured plant directly so it still appears in
+    // the garden in that case.
+    for (final id in _knownPlantIds) {
+      if (merged.containsKey(id)) {
+        continue;
+      }
+
+      for (final rootPath in const ['plants', 'plant']) {
+        final plantPath = '$rootPath/$id';
+        try {
+          final value = await _database.getData(plantPath);
+          final plantData = _asMap(value);
+          if (plantData.isNotEmpty) {
+            merged[id] = Plant.fromMap(id, plantData);
+            break;
+          }
+        } catch (error, stackTrace) {
+          rememberReadError(error, stackTrace);
+        }
+
+        // Some deployments expose only the captures child. Its existence is
+        // enough to include the plant; the disease screen reads its details.
+        try {
+          final captures = await _database.getData('$plantPath/plant_captures');
+          if ((captures is Map && captures.isNotEmpty) ||
+              (captures is List && captures.isNotEmpty)) {
+            merged[id] = Plant.fromMap(id, const {});
+            break;
+          }
+        } catch (error, stackTrace) {
+          rememberReadError(error, stackTrace);
+        }
+      }
+    }
+
+    if (merged.isEmpty && lastReadError != null) {
+      LoggerUtils.e(
+        'Could not load plants from Realtime Database',
+        lastReadError,
+        lastReadStackTrace,
+      );
+    }
+
+    return merged.values.toList()..sort((a, b) => a.name.compareTo(b.name));
   }
 }
 
-List<String> _knownPlantDocumentPaths() {
-  const knownIds = ['tomato_001'];
-  return [
-    for (final id in knownIds) ...['plant/$id', 'plants/$id'],
-  ];
+void _addPlantsFromMap(Map<String, Plant> target, Map<dynamic, dynamic> data) {
+  for (final entry in data.entries) {
+    if (entry.value is! Map) {
+      continue;
+    }
+
+    final id = entry.key.toString().trim();
+    if (id.isEmpty) {
+      continue;
+    }
+
+    target[id] = Plant.fromMap(id, _asMap(entry.value));
+  }
 }
 
-Map<String, Plant> _fallbackKnownPlants() {
-  return {'plant/tomato_001': _fallbackPlant('tomato_001')};
-}
-
-Plant _fallbackPlant(String id) {
-  return Plant.fromFirestore(id, const {'name': 'Cà chua', 'image': 'tomato'});
+Map<dynamic, dynamic> _asMap(dynamic value) {
+  if (value is Map<dynamic, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return Map<dynamic, dynamic>.from(value);
+  }
+  return <dynamic, dynamic>{};
 }
 
 @riverpod
 PlantRemoteDataSource plantRemoteDataSource(PlantRemoteDataSourceRef ref) {
-  final firestore = ref.watch(firebaseFirestoreServiceProvider);
-  return PlantRemoteDataSourceImpl(firestore);
+  final database = ref.watch(firebaseRealtimeDatabaseServiceProvider);
+  return PlantRemoteDataSourceImpl(database);
 }

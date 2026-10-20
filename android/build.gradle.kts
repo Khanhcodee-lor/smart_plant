@@ -17,6 +17,16 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+
+    // tflite_flutter 0.10.4 still targets Java 8, while newer Kotlin tooling
+    // defaults its Kotlin tasks to the running JDK target.
+    if (name == "tflite_flutter") {
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

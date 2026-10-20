@@ -34,6 +34,10 @@ class DiseaseDetectionScreen extends BaseView {
 
   @override
   AppBar? buildAppBar(BuildContext context, WidgetRef ref) {
+    final plants =
+        ref.watch(plantControllerProvider).asData?.value ?? const <Plant>[];
+    final plant = _resolvePlantForScreen(plants, plantId);
+
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -44,19 +48,7 @@ class DiseaseDetectionScreen extends BaseView {
         fontWeight: FontWeight.w600,
       ),
       centerTitle: true,
-      title: ref
-          .watch(plantControllerProvider)
-          .when(
-            data: (plants) {
-              final plant = _resolvePlantForScreen(plants, plantId);
-              if (plant == null) {
-                return const Text('Không tìm thấy dữ liệu cây');
-              }
-              return Text(plant.name);
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(child: Text('Lỗi tải dữ liệu: $error')),
-          ),
+      title: Text(plant.name),
     );
   }
 
@@ -96,6 +88,9 @@ class DiseaseDetectionScreen extends BaseView {
     final isSendingCapture = ref.watch(
       plantCaptureCommandInFlightProvider(plantId),
     );
+    final displayPlantAsyncValue = AsyncData<List<Plant>>(
+      plantAsyncValue.asData?.value ?? const <Plant>[],
+    );
 
     return SizedBox.expand(
       child: Stack(
@@ -111,14 +106,9 @@ class DiseaseDetectionScreen extends BaseView {
                   ref.read(plantDetectionsProvider(plantId).future),
                 ]);
               },
-              child: plantAsyncValue.when(
+              child: displayPlantAsyncValue.when(
                 data: (plants) {
                   final plant = _resolvePlantForScreen(plants, plantId);
-                  if (plant == null) {
-                    return Center(
-                      child: Text('Không tìm thấy dữ liệu cây ($plantId)'),
-                    );
-                  }
 
                   final firestoreDetections =
                       detectionsAsyncValue.asData?.value;
@@ -265,9 +255,8 @@ class DiseaseDetectionScreen extends BaseView {
                     ),
                   );
                 },
-                loading: () => const AppLoadingWidget(
-                  text: 'Đang tải dữ liệu...',
-                ),
+                loading: () =>
+                    const AppLoadingWidget(text: 'Đang tải dữ liệu...'),
                 error: (error, _) =>
                     Center(child: Text('Lỗi tải dữ liệu: $error')),
               ),
@@ -1103,7 +1092,7 @@ List<DetectionItem> _uniqueDetectionsByTime(List<DetectionItem> items) {
   }
 
   final result = [...uniqueItems.values, ...noTimeItems];
-  
+
   result.sort((a, b) {
     final timeA = _tryParseDetectionTime(a.time);
     final timeB = _tryParseDetectionTime(b.time);
@@ -1164,7 +1153,7 @@ DateTime? _tryParseDetectionTime(String value) {
   return DateTime.tryParse(normalized.replaceFirst(' ', 'T'));
 }
 
-Plant? _resolvePlantForScreen(List<Plant> plants, String plantId) {
+Plant _resolvePlantForScreen(List<Plant> plants, String plantId) {
   for (final plant in plants) {
     if (plant.id == plantId) {
       return plant;
@@ -1177,5 +1166,5 @@ Plant? _resolvePlantForScreen(List<Plant> plants, String plantId) {
     }
   }
 
-  return null;
+  return Plant.fromMap(plantId, const {});
 }

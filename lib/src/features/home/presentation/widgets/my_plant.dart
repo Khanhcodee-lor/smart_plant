@@ -35,15 +35,7 @@ class MyPlant extends ConsumerWidget {
         plantAsyncValue.when(
           data: (plants) {
             if (plants.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20.h),
-                  child: "Chưa có cây nào trong vườn.".bodyCustom(
-                    size: 14.sp,
-                    color: AppColors.disabledText,
-                  ),
-                ),
-              );
+              return _buildEmptyGardenDiseaseEntry(context);
             }
             return ListView.separated(
               shrinkWrap: true,
@@ -56,14 +48,101 @@ class MyPlant extends ConsumerWidget {
               },
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stackTrace) =>
-              Center(child: Text('Lỗi tải dữ liệu: $error')),
+          loading: () => Column(
+            children: [
+              const Center(child: CircularProgressIndicator()),
+              SizedBox(height: 12.h),
+              _buildEmptyGardenDiseaseEntry(context),
+            ],
+          ),
+          error: (error, stackTrace) => Column(
+            children: [
+              _buildEmptyGardenDiseaseEntry(context),
+              SizedBox(height: 8.h),
+              Text(
+                'Không tải được danh sách cây: $error',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  color: AppColors.disabledText,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
 
         SizedBox(height: 10.h),
         Center(child: _buildAddPlantButton(context)),
       ],
+    );
+  }
+
+  Widget _buildEmptyGardenDiseaseEntry(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 56.w,
+                height: 56.w,
+                padding: EdgeInsets.all(5.r),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundGreen,
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Image.asset(AppAssets.tomatoPlantImage),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    'Cà chua'.bodyCustom(
+                      size: 15.sp,
+                      color: AppColors.textMain,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    SizedBox(height: 3.h),
+                    'Xem kết quả sâu bệnh và lịch sử chụp'.bodyCustom(
+                      size: 12.sp,
+                      color: AppColors.disabledText,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14.h),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => context.push('/detail/tomato_001'),
+              icon: const Icon(Icons.health_and_safety_outlined),
+              label: const Text('Xem sâu bệnh'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: 11.h),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -77,7 +156,7 @@ class MyPlant extends ConsumerWidget {
         borderRadius: BorderRadius.circular(14.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03), // Bóng mờ rất nhẹ
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -85,62 +164,40 @@ class MyPlant extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          // Phần trên: Ảnh + Tên + Trạng thái
           Row(
             children: [
-              Container(
+              SizedBox(
                 width: 80.w,
                 height: 80.h,
-                // Dựa theo dữ liệu 'image': 'tomato' trong realtime db
-                child: plant.imageUrl.toLowerCase().contains('tomato')
-                    ? Image.asset(AppAssets.tomatoPlantImage)
-                    : Image.asset(
-                        AppAssets.tomatoPlantImage,
-                      ), // Fallback default
+                child: Image.asset(AppAssets.tomatoPlantImage),
               ),
               SizedBox(width: 16.w),
-              // Thông tin
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        plant.name.bodyCustom(
-                          size: 12.sp,
-                          color: AppColors.textMain,
-                        ),
-                        // Nút chuyển màn hình theo ID
-                        InkWell(
-                          onTap: () {
-                            // Sửa đường dẫn match với router: path: 'detail/:id' bên trong '/'
-                            context.push('/detail/${plant.id}');
-                          },
-                          child: Container(
-                            padding: EdgeInsets.all(6.r),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.withOpacity(0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.arrow_forward_ios,
-                              size: 12.sp,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ),
-                      ],
+                    plant.name.bodyCustom(
+                      size: 12.sp,
+                      color: AppColors.textMain,
                     ),
                     SizedBox(height: 4.h),
                     plant.status.bodyCustom(
                       size: 12.sp,
-                      color: AppColors.disabledText, // Màu xám cho trạng thái
+                      color: AppColors.disabledText,
                     ),
                   ],
                 ),
               ),
             ],
+          ),
+          SizedBox(height: 10.h),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/detail/${plant.id}'),
+              icon: const Icon(Icons.health_and_safety_outlined),
+              label: const Text('Xem sâu bệnh'),
+            ),
           ),
         ],
       ),
@@ -165,7 +222,7 @@ class MyPlant extends ConsumerWidget {
             ),
           ],
         ),
-        child: "Cài đặt Wifi thiết bị".bodyCustom(
+        child: 'Cài đặt Wifi thiết bị'.bodyCustom(
           size: 12.sp,
           color: AppColors.disabledText,
         ),

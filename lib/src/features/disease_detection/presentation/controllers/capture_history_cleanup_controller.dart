@@ -56,6 +56,8 @@ class CaptureHistoryCleanupService {
 List<String> captureHistoryCollectionPaths(String plantId) {
   final normalized = plantId.trim();
   return [
+    'plant/$normalized/plant_captures',
+    'plants/$normalized/plant_captures',
     'plant/$normalized/detections',
     'plants/$normalized/detections',
     'plant/$normalized/detection',

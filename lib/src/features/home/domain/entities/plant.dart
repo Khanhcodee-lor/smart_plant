@@ -111,6 +111,7 @@ class Plant with _$Plant {
       latestData['disease'],
       latestData['diseaseClass'],
       latestData['disease_name'],
+      _firstStringFromArrayLike(latestData['all_classes_detected_en']),
       _firstStringFromArrayLike(latestData['all_classes_detected_vi']),
       _firstStringFromArrayLike(latestData['all_classes_detected']),
       _firstDiseaseClassFromListLike(latestData['disease_list_unique_top']),
@@ -122,7 +123,6 @@ class Plant with _$Plant {
       latestData['label_en'],
       latestData['disease_en'],
       latestData['disease_name_en'],
-      _firstStringFromArrayLike(latestData['all_classes_detected_en']),
       latestData['prediction'],
       latestData['result'],
     ]);
