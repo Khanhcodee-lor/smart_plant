@@ -281,7 +281,7 @@ class DiseaseDetectionScreen extends BaseView {
             ),
           if (isSendingCapture)
             const AppLoadingWidget(
-              text: 'Pi đang chụp và phân tích...',
+              text: 'Đang chờ Pi chụp và phân tích...',
               showOverlay: true,
             ),
         ],
@@ -441,6 +441,14 @@ class DiseaseDetectionScreen extends BaseView {
       final requestId = await ref
           .read(plantCaptureCommandServiceProvider)
           .requestCapture(plantId);
+      if (!context.mounted) {
+        return;
+      }
+
+      showDiseaseFeedbackSnackBar(
+        context,
+        'Đã gửi lệnh chụp tới Pi, đang chờ ảnh...',
+      );
       ref.read(plantCaptureSnapshotRefreshKeyProvider(plantId).notifier).state =
           requestId;
       ref.invalidate(plantDetectionsProvider(plantId));
@@ -453,7 +461,15 @@ class DiseaseDetectionScreen extends BaseView {
         requestId: requestId,
       );
       ref.invalidate(plantControllerProvider);
-      if (!context.mounted || hasNewResult) {
+      if (!context.mounted) {
+        return;
+      }
+
+      if (hasNewResult) {
+        showDiseaseFeedbackSnackBar(
+          context,
+          'Pi đã chụp xong, kết quả đã được cập nhật.',
+        );
         return;
       }
 
@@ -841,26 +857,32 @@ class _BottomActionButtons extends ConsumerWidget {
             ),
             Align(
               alignment: Alignment.center,
-              child: FloatingActionButton(
+              child: FloatingActionButton.extended(
                 heroTag: 'capture_$plantId',
-                tooltip: 'Chụp hình',
+                tooltip: 'Gửi lệnh chụp ảnh cho Pi',
                 backgroundColor: AppColors.accent,
                 elevation: 4,
-                onPressed: isSendingCapture ? null : onCapturePressed,
-                child: isSendingCapture
+                onPressed: isSendingCapture || isUploadingImage
+                    ? null
+                    : onCapturePressed,
+                icon: isSendingCapture
                     ? SizedBox(
-                        width: 24.w,
-                        height: 24.w,
+                        width: 20.w,
+                        height: 20.w,
                         child: const CircularProgressIndicator(
-                          strokeWidth: 2.4,
+                          strokeWidth: 2.2,
                           color: Colors.white,
                         ),
                       )
                     : Icon(
                         Icons.photo_camera_outlined,
                         color: Colors.white,
-                        size: 24.sp,
+                        size: 22.sp,
                       ),
+                label: Text(
+                  isSendingCapture ? 'Đang chờ Pi' : 'Chụp bằng Pi',
+                  style: TextStyle(fontSize: 12.sp, color: Colors.white),
+                ),
               ),
             ),
             Align(

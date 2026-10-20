@@ -22,32 +22,20 @@ void main() {
     expect(payload['timestamp'], now.millisecondsSinceEpoch / 1000);
   });
 
-  test('build request-only capture payload omits status', () {
-    final now = DateTime.utc(2026, 4, 28, 0, 53, 18, 349, 940);
-    final payload = buildPlantCaptureRequestOnlyPayload(
-      now: now,
-      requestId: 'manual_test_request',
-    );
-
-    expect(payload.containsKey('status'), isFalse);
-    expect(payload['request_id'], 'manual_test_request');
-    expect(payload['timestamp'], now.millisecondsSinceEpoch / 1000);
-  });
-
-  test('request capture overwrites command node without status', () async {
+  test('request capture sends a trigger to the Pi command node', () async {
     final database = _FakeRealtimeDatabaseService();
     final service = PlantCaptureCommandService(database);
 
     final requestId = await service.requestCapture(' tomato_001 ');
 
-    expect(database.sets, hasLength(1));
-    expect(database.updates, isEmpty);
-    expect(database.sets[0].path, 'plants/tomato_001/commands/capture');
-    expect(database.sets[0].data, isA<Map<String, dynamic>>());
-    final data = database.sets[0].data as Map<String, dynamic>;
-    expect(data.containsKey('status'), isFalse);
+    expect(database.updates, hasLength(1));
+    expect(database.sets, isEmpty);
+    expect(database.updates[0].path, 'plants/tomato_001/commands/capture');
+    final data = database.updates[0].data;
+    expect(data['status'], 1);
     expect(requestId, startsWith('manual_'));
     expect(data['request_id'], requestId);
+    expect(data['timestamp'], isA<num>());
   });
 }
 

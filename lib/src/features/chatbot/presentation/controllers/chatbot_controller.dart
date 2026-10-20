@@ -76,11 +76,14 @@ class ChatbotController extends StateNotifier<ChatState> {
       );
     } on FirebaseFunctionsException catch (error) {
       if (!mounted) return;
-      // Lỗi do Firebase hoặc Server trả về
+      final errorDetails = error.message?.toLowerCase() ?? '';
+      final message = errorDetails.contains('reported as leaked')
+          ? 'Khóa Gemini trên máy chủ đã bị Google chặn. Quản trị viên cần tạo khóa mới và cập nhật Cloud Function askChatbot.'
+          : 'Lỗi kết nối: ${error.message}';
       state = state.copyWith(
         messages: [
           ...state.messages,
-          ChatMessage(text: "Lỗi kết nối: ${error.message}", isUser: false),
+          ChatMessage(text: message, isUser: false),
         ],
         isLoading: false,
       );

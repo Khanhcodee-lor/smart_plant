@@ -123,7 +123,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
-              'Chưa cấu hình API key. Thêm key vào api_config.dart',
+              'Dịch vụ giọng nói chưa được cấu hình an toàn trên máy chủ.',
             ),
             backgroundColor: AppColors.error,
           ),
@@ -195,6 +195,17 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
   // ===================== TTS — AI ĐỌC VĂN BẢN =====================
 
   void _speakMessage(String text, int messageIndex) {
+    if (ApiConfig.googleSpeechApiKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Dịch vụ đọc giọng nói chưa được cấu hình an toàn trên máy chủ.',
+          ),
+        ),
+      );
+      return;
+    }
+
     if (_isTtsPlaying && _currentSpeakingIndex == messageIndex) {
       // Đang đọc tin nhắn này → dừng lại
       _ttsService.stop();
@@ -578,8 +589,8 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                               hintText: _isRecording
                                   ? "Đang lắng nghe..."
                                   : _isTranscribing
-                                      ? "Đang xử lý..."
-                                      : "Hỏi bất cứ điều gì",
+                                  ? "Đang xử lý..."
+                                  : "Hỏi bất cứ điều gì",
                               hintStyle: TextStyle(
                                 color: _isRecording
                                     ? Colors.red

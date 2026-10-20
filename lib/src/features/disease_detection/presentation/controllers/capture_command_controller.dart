@@ -15,9 +15,9 @@ class PlantCaptureCommandService {
     final now = DateTime.now().toUtc();
     final requestId = buildPlantCaptureRequestId(now);
     final path = buildPlantCaptureCommandPath(normalizedPlantId);
-    await _database.setData(
+    await _database.updateData(
       path,
-      buildPlantCaptureRequestOnlyPayload(now: now, requestId: requestId),
+      buildPlantCaptureCommandPayload(now: now, requestId: requestId),
     );
     return requestId;
   }
@@ -38,16 +38,6 @@ Map<String, dynamic> buildPlantCaptureCommandPayload({
 }) {
   return {
     'status': status,
-    'request_id': requestId ?? buildPlantCaptureRequestId(now),
-    'timestamp': now.millisecondsSinceEpoch / 1000,
-  };
-}
-
-Map<String, dynamic> buildPlantCaptureRequestOnlyPayload({
-  required DateTime now,
-  String? requestId,
-}) {
-  return {
     'request_id': requestId ?? buildPlantCaptureRequestId(now),
     'timestamp': now.millisecondsSinceEpoch / 1000,
   };
