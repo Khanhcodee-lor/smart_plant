@@ -1,17 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
-import 'package:dio/dio.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 const _noDiseaseDetectedLabel = 'Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh';
-
-const diseaseImageUploadEndpoint = String.fromEnvironment(
-  'DISEASE_UPLOAD_API_URL',
-  defaultValue: 'https://khanhsssd-khanhdz.hf.space/api/detect',
-);
 
 class DiseaseImageUploadException implements Exception {
   const DiseaseImageUploadException(this.message);
@@ -28,75 +26,180 @@ class DiseaseImageUploadResult {
     required this.capturedAt,
     required this.hasServerSnapshot,
     this.detections = const <DetectionItem>[],
+    this.requestId = '',
+    this.severity = '',
+    this.treatment = '',
+    this.timedOut = false,
   });
 
   final String snapshotUrl;
   final String capturedAt;
   final bool hasServerSnapshot;
   final List<DetectionItem> detections;
+  final String requestId;
+  final String severity;
+  final String treatment;
+  final bool timedOut;
 
   DetectionItem? get latestDetection =>
       detections.isEmpty ? null : detections.first;
 }
 
 class DiseaseImageUploadService {
-  const DiseaseImageUploadService(this._dio);
+  const DiseaseImageUploadService({
+    required this.database,
+    required this.storage,
+  });
 
-  final Dio _dio;
+  final FirebaseDatabase database;
+  final FirebaseStorage storage;
 
   Future<DiseaseImageUploadResult> uploadImage({
     required String plantId,
     required XFile image,
+    void Function()? onQueued,
   }) async {
-    final endpoint = diseaseImageUploadEndpoint.trim();
-    if (endpoint.isEmpty) {
-      throw const DiseaseImageUploadException(
-        'Chưa cấu hình API upload ảnh. Thêm --dart-define=DISEASE_UPLOAD_API_URL=https://server-cua-ban/detect khi chạy app.',
-      );
-    }
-
     final normalizedPlantId = plantId.trim();
-    if (normalizedPlantId.isEmpty) {
-      throw const DiseaseImageUploadException('Không tìm thấy mã cây để gửi.');
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,64}$').hasMatch(normalizedPlantId)) {
+      throw const DiseaseImageUploadException('Mã cây không hợp lệ.');
     }
 
     final bytes = await image.readAsBytes();
-    final frame = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-    final capturedAt = _formatDateTime(DateTime.now());
-    final fallbackSnapshotUrl = image.path.trim().isEmpty ? frame : image.path;
+    if (bytes.isEmpty) {
+      throw const DiseaseImageUploadException('Ảnh được chọn đang trống.');
+    }
+
+    final now = DateTime.now().toUtc();
+    final randomSuffix = Random.secure().nextInt(0x7fffffff).toRadixString(16);
+    final requestId =
+        'mobile_upload_${now.millisecondsSinceEpoch}_$randomSuffix';
+    final capturedAt = now.toIso8601String();
+    final storagePath =
+        'plants/$normalizedPlantId/mobile_uploads/$requestId.jpg';
+    final storageRef = storage.ref().child(storagePath);
+    late final String downloadUrl;
 
     try {
-      final response = await _dio.post<dynamic>(
-        endpoint,
-        data: {
-          'frame': frame,
-          'device_id': normalizedPlantId,
-          'device': normalizedPlantId,
-          'plant_id': normalizedPlantId,
-          'source': 'mobile_app',
-          'captured_at': DateTime.now().toUtc().toIso8601String(),
-          'persist': true,
-        },
-        options: Options(contentType: Headers.jsonContentType),
+      await storageRef.putData(
+        bytes,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'plant_id': normalizedPlantId,
+            'request_id': requestId,
+            'source': 'mobile_app',
+          },
+        ),
       );
-
-      return _parseUploadResult(
-        response.data,
-        fallbackSnapshotUrl: fallbackSnapshotUrl,
-        fallbackTime: capturedAt,
-      );
-    } on DioException catch (error) {
-      final statusCode = error.response?.statusCode;
-      final serverMessage = error.response?.data?.toString();
-      final message = serverMessage == null || serverMessage.trim().isEmpty
-          ? error.message
-          : serverMessage;
-
+      downloadUrl = await storageRef.getDownloadURL();
+      await database.ref('plants/$normalizedPlantId/commands/analyze').set({
+        'status': 1,
+        'request_id': requestId,
+        'image_storage_path': storageRef.fullPath,
+        'image_url': downloadUrl,
+        'plant_id': normalizedPlantId,
+        'source': 'mobile_app',
+        'captured_at': capturedAt,
+        'created_at': now.millisecondsSinceEpoch / 1000,
+      });
+    } catch (error) {
       throw DiseaseImageUploadException(
-        statusCode == null
-            ? 'Gửi ảnh lên server thất bại: $message'
-            : 'Server trả lỗi $statusCode: $message',
+        'Không thể tải ảnh hoặc gửi yêu cầu: $error',
       );
+    }
+
+    onQueued?.call();
+    return _waitForResult(
+      plantId: normalizedPlantId,
+      requestId: requestId,
+      snapshotUrl: downloadUrl,
+      capturedAt: capturedAt,
+    );
+  }
+
+  Future<DiseaseImageUploadResult> _waitForResult({
+    required String plantId,
+    required String requestId,
+    required String snapshotUrl,
+    required String capturedAt,
+  }) async {
+    final completer = Completer<DiseaseImageUploadResult>();
+    final captureRef = database.ref(
+      'plants/$plantId/plant_captures/$requestId',
+    );
+    final commandRef = database.ref('plants/$plantId/commands/analyze');
+    void fail(Object error) {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          error is DiseaseImageUploadException
+              ? error
+              : DiseaseImageUploadException(
+                  'Không đọc được kết quả từ Firebase: $error',
+                ),
+        );
+      }
+    }
+
+    final captureSubscription = captureRef.onValue.listen((event) {
+      final result = _asMap(event.snapshot.value);
+      if (result['request_id']?.toString() != requestId) {
+        return;
+      }
+      final status = result['status']?.toString().toLowerCase();
+      final capturePath = 'plants/$plantId/plant_captures/$requestId';
+      if (status == 'completed' && !completer.isCompleted) {
+        completer.complete(
+          _parseUploadResult(
+            result,
+            fallbackSnapshotUrl: snapshotUrl,
+            fallbackTime: capturedAt,
+            sourceDocumentPath: capturePath,
+          ),
+        );
+      } else if (status == 'failed' && !completer.isCompleted) {
+        fail(
+          DiseaseImageUploadException(
+            result['error']?.toString() ?? 'Pi không thể phân tích ảnh.',
+          ),
+        );
+      }
+    }, onError: fail);
+    final commandSubscription = commandRef.onValue.listen((event) {
+      final command = _asMap(event.snapshot.value);
+      if (command['request_id']?.toString() == requestId &&
+          command['status']?.toString() == '-1') {
+        fail(
+          DiseaseImageUploadException(
+            command['error']?.toString() ?? 'Pi không thể phân tích ảnh.',
+          ),
+        );
+      }
+    }, onError: fail);
+    final timeoutTimer = Timer(const Duration(seconds: 30), () {
+      if (!completer.isCompleted) {
+        completer.complete(
+          DiseaseImageUploadResult(
+            snapshotUrl: snapshotUrl,
+            capturedAt: capturedAt,
+            hasServerSnapshot: true,
+            requestId: requestId,
+            timedOut: true,
+            detections: _noDiseaseDetections(
+              fallbackTime: capturedAt,
+              fallbackSnapshotUrl: snapshotUrl,
+              sourceDocumentPath: 'plants/$plantId/plant_captures/$requestId',
+            ),
+          ),
+        );
+      }
+    });
+
+    try {
+      return await completer.future;
+    } finally {
+      timeoutTimer.cancel();
+      await captureSubscription.cancel();
+      await commandSubscription.cancel();
     }
   }
 }
@@ -118,6 +221,7 @@ DiseaseImageUploadResult _parseUploadResult(
   dynamic data, {
   required String fallbackSnapshotUrl,
   required String fallbackTime,
+  String sourceDocumentPath = '',
 }) {
   final normalizedData = _normalizeResponseData(data);
   final root = _asMap(normalizedData);
@@ -158,6 +262,15 @@ DiseaseImageUploadResult _parseUploadResult(
       _processedSnapshotUrlFromMap(payload) ??
       _processedSnapshotUrlFromMap(root);
   final snapshotUrl = serverSnapshotUrl ?? fallbackSnapshotUrl;
+  final requestId =
+      _firstNonEmptyString([payload['request_id'], root['request_id']]) ?? '';
+  final plantId =
+      _firstNonEmptyString([payload['plant_id'], root['plant_id']]) ?? '';
+  final effectiveSourcePath = sourceDocumentPath.isNotEmpty
+      ? sourceDocumentPath
+      : (requestId.isNotEmpty && plantId.isNotEmpty
+          ? 'plants/$plantId/plant_captures/$requestId'
+          : '');
   final detections = _extractDetectionItems(
     [
       if (normalizedData is Iterable && normalizedData is! String)
@@ -181,12 +294,14 @@ DiseaseImageUploadResult _parseUploadResult(
     ],
     fallbackTime: capturedAt,
     fallbackSnapshotUrl: snapshotUrl,
+    sourceDocumentPath: effectiveSourcePath,
   );
   final normalizedDetections = _normalizeDetectionList(detections);
   final effectiveDetections = normalizedDetections.isEmpty
       ? _noDiseaseDetections(
           fallbackTime: capturedAt,
           fallbackSnapshotUrl: snapshotUrl,
+          sourceDocumentPath: effectiveSourcePath,
         )
       : normalizedDetections;
 
@@ -195,6 +310,18 @@ DiseaseImageUploadResult _parseUploadResult(
     capturedAt: capturedAt,
     hasServerSnapshot: serverSnapshotUrl?.trim().isNotEmpty ?? false,
     detections: effectiveDetections,
+    requestId:
+        _firstNonEmptyString([payload['request_id'], root['request_id']]) ?? '',
+    severity:
+        _firstNonEmptyString([payload['severity'], root['severity']]) ?? '',
+    treatment:
+        _firstNonEmptyString([
+          payload['treatment'],
+          payload['notes'],
+          root['treatment'],
+          root['notes'],
+        ]) ??
+        '',
   );
 }
 
@@ -219,6 +346,7 @@ List<DetectionItem> _extractDetectionItems(
   List<dynamic> sources, {
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  String sourceDocumentPath = '',
   int depth = 0,
 }) {
   if (depth > 8) {
@@ -233,6 +361,7 @@ List<DetectionItem> _extractDetectionItems(
         source,
         fallbackTime: fallbackTime,
         fallbackSnapshotUrl: fallbackSnapshotUrl,
+        sourceDocumentPath: sourceDocumentPath,
       );
       if (classItems.isNotEmpty) {
         items.addAll(classItems);
@@ -244,6 +373,7 @@ List<DetectionItem> _extractDetectionItems(
           _asMap(value),
           fallbackTime: fallbackTime,
           fallbackSnapshotUrl: fallbackSnapshotUrl,
+          sourceDocumentPath: sourceDocumentPath,
           depth: depth + 1,
         );
         items.addAll(nestedItems);
@@ -255,6 +385,7 @@ List<DetectionItem> _extractDetectionItems(
       _asMap(source),
       fallbackTime: fallbackTime,
       fallbackSnapshotUrl: fallbackSnapshotUrl,
+      sourceDocumentPath: sourceDocumentPath,
       depth: depth + 1,
     );
     items.addAll(nestedItems);
@@ -267,6 +398,7 @@ List<DetectionItem> _extractDetectionItemsFromMap(
   Map<dynamic, dynamic> data, {
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  String sourceDocumentPath = '',
   int depth = 0,
 }) {
   if (data.isEmpty || depth > 8) {
@@ -321,6 +453,7 @@ List<DetectionItem> _extractDetectionItemsFromMap(
     ],
     fallbackTime: localTime,
     fallbackSnapshotUrl: localSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
     depth: depth + 1,
   );
   if (nestedItems.isNotEmpty) {
@@ -331,6 +464,7 @@ List<DetectionItem> _extractDetectionItemsFromMap(
     data,
     fallbackTime: localTime,
     fallbackSnapshotUrl: localSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
   );
   if (directItem != null) {
     return <DetectionItem>[directItem];
@@ -343,6 +477,7 @@ List<DetectionItem> _extractClassArrayItems(
   Iterable<dynamic> source, {
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  String sourceDocumentPath = '',
 }) {
   final items = <DetectionItem>[];
   final confidences = source
@@ -370,6 +505,7 @@ List<DetectionItem> _extractClassArrayItems(
             : _normalizeConfidence(confidences.first),
         time: fallbackTime,
         snapshotUrl: fallbackSnapshotUrl,
+        sourceDocumentPath: sourceDocumentPath,
       ),
     );
   }
@@ -380,6 +516,7 @@ List<DetectionItem> _extractClassArrayItems(
 List<DetectionItem> _noDiseaseDetections({
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  String sourceDocumentPath = '',
 }) {
   if (fallbackTime.trim().isEmpty && fallbackSnapshotUrl.trim().isEmpty) {
     return const <DetectionItem>[];
@@ -391,6 +528,7 @@ List<DetectionItem> _noDiseaseDetections({
       confidence: 0,
       time: fallbackTime,
       snapshotUrl: fallbackSnapshotUrl,
+      sourceDocumentPath: sourceDocumentPath,
     ),
   ];
 }
@@ -399,6 +537,7 @@ DetectionItem? _toDetectionItem(
   Map<dynamic, dynamic> data, {
   required String fallbackTime,
   required String fallbackSnapshotUrl,
+  String sourceDocumentPath = '',
 }) {
   if (data.isEmpty) {
     return null;
@@ -414,7 +553,9 @@ DetectionItem? _toDetectionItem(
     data['class'],
     data['label'],
     data['disease'],
+    data['disease_class'],
     data['diseaseClass'],
+    data['pest_type'],
     data['disease_name'],
     _firstStringFromArrayLike(data['all_classes_detected_vi']),
     _firstStringFromArrayLike(data['all_classes_detected']),
@@ -472,6 +613,7 @@ DetectionItem? _toDetectionItem(
       ]),
     ),
     snapshotUrl: _processedSnapshotUrlFromMap(data) ?? fallbackSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
   );
 }
 
@@ -537,6 +679,8 @@ String? _processedSnapshotUrlFromMap(Map<dynamic, dynamic> data) {
     data['resultFrame'],
     data['result_image'],
     data['resultImage'],
+    data['snapshot_url'],
+    data['snapshotUrl'],
   ]);
 }
 
@@ -685,20 +829,13 @@ double? _firstNumericFromArrayLike(dynamic value) {
   return null;
 }
 
-final diseaseImageUploadDioProvider = Provider<Dio>((ref) {
-  return Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 20),
-      sendTimeout: const Duration(seconds: 45),
-      receiveTimeout: const Duration(seconds: 45),
-    ),
-  );
-});
-
 final diseaseImageUploadServiceProvider = Provider<DiseaseImageUploadService>((
   ref,
 ) {
-  return DiseaseImageUploadService(ref.watch(diseaseImageUploadDioProvider));
+  return DiseaseImageUploadService(
+    database: FirebaseDatabase.instance,
+    storage: FirebaseStorage.instance,
+  );
 });
 
 final diseaseImageUploadInFlightProvider = StateProvider.autoDispose

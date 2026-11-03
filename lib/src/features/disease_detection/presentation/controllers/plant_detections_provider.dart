@@ -41,6 +41,10 @@ class _CaptureMetadata {
   final String snapshotUrl;
 }
 
+final deletedCapturesProvider = StateProvider.family<Set<String>, String>(
+  (ref, plantId) => <String>{},
+);
+
 final plantDetectionsProvider = StreamProvider.autoDispose
     .family<PlantDetectionsData, String>((ref, plantId) {
       final database = ref.watch(firebaseRealtimeDatabaseServiceProvider);
@@ -51,6 +55,7 @@ final plantDetectionsProvider = StreamProvider.autoDispose
         var realtimeDetections = const PlantDetectionsData();
         final firestoreDetectionsByPath = <String, PlantDetectionsData>{};
         final subscriptions = <StreamSubscription<dynamic>>[];
+        final rtdbDeletedCaptures = <String>{};
 
         void emitMerged() {
           if (cancelled) {
@@ -60,10 +65,35 @@ final plantDetectionsProvider = StreamProvider.autoDispose
           final firestoreDetections = _mergeDetectionsByPath(
             firestoreDetectionsByPath,
           );
+          final rawMerged = _mergeDetections(
+            firestoreDetections,
+            realtimeDetections,
+          );
+
+          final localDeleted = ref.read(deletedCapturesProvider(plantId));
+          final allDeleted = <String>{...rtdbDeletedCaptures, ...localDeleted};
+
           controller.add(
-            _mergeDetections(firestoreDetections, realtimeDetections),
+            filterOutDeletedCaptures(rawMerged, allDeleted),
           );
         }
+
+        ref.listen<Set<String>>(deletedCapturesProvider(plantId), (_, next) {
+          emitMerged();
+        });
+
+        Future<void> fetchInitialDeleted() async {
+          try {
+            final initialDeleted =
+                await _readRealtimeDeletedCaptures(database, plantId);
+            if (!cancelled && initialDeleted.isNotEmpty) {
+              rtdbDeletedCaptures.addAll(initialDeleted);
+              emitMerged();
+            }
+          } catch (_) {}
+        }
+
+        unawaited(fetchInitialDeleted());
 
         void handleFirestoreError(
           String path,
@@ -107,7 +137,10 @@ final plantDetectionsProvider = StreamProvider.autoDispose
                 .documentStream(path)
                 .listen(
                   (data) {
-                    final parsed = _parseDetectionsFromDocument(data);
+                    final parsed = _parseDetectionsFromDocument(
+                      data,
+                      sourceDocumentPath: path,
+                    );
                     _logParsedDetections(path, parsed);
                     firestoreDetectionsByPath[path] = parsed;
                     emitMerged();
@@ -122,6 +155,12 @@ final plantDetectionsProvider = StreamProvider.autoDispose
         Future<void> poll() async {
           while (!cancelled) {
             try {
+              final deletedFromRtdb =
+                  await _readRealtimeDeletedCaptures(database, plantId);
+              if (deletedFromRtdb.isNotEmpty) {
+                rtdbDeletedCaptures.addAll(deletedFromRtdb);
+              }
+
               final value = await _readRealtimePlantValue(database, plantId);
               final parsed = _parseDetectionsFromRealtimePlant(
                 value,
@@ -170,6 +209,165 @@ List<String> _firestorePlantDocumentPaths(String plantId) {
   return ['plants/$normalizedPlantId', 'plant/$normalizedPlantId'];
 }
 
+Future<Set<String>> _readRealtimeDeletedCaptures(
+  FirebaseRealtimeDatabaseService database,
+  String plantId,
+) async {
+  final normalizedPlantId = plantId.trim();
+  final deletedKeys = <String>{};
+  for (final path in [
+    'plants/$normalizedPlantId/deleted_captures',
+    'plant/$normalizedPlantId/deleted_captures',
+  ]) {
+    try {
+      final value = await database.getData(path);
+      if (value is Map) {
+        for (final entry in value.entries) {
+          final key = entry.key.toString().trim();
+          if (key.isNotEmpty) {
+            deletedKeys.add(key);
+          }
+          if (entry.value is Map) {
+            final map = entry.value as Map;
+            for (final subKey in [
+              'id',
+              'requestId',
+              'docId',
+              'time',
+              'snapshotUrl',
+              'sourceDocumentPath',
+            ]) {
+              final val = map[subKey]?.toString().trim() ?? '';
+              if (val.isNotEmpty) {
+                deletedKeys.add(val);
+              }
+            }
+          }
+        }
+      } else if (value is List) {
+        for (final item in value) {
+          final key = item?.toString().trim() ?? '';
+          if (key.isNotEmpty) {
+            deletedKeys.add(key);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  return deletedKeys;
+}
+
+bool isDetectionDeleted(DetectionItem item, Set<String> deletedKeys) {
+  if (deletedKeys.isEmpty) {
+    return false;
+  }
+
+  final sourceDoc = item.sourceDocumentPath.trim();
+  final snapshot = item.snapshotUrl.trim();
+  final time = item.time.trim();
+
+  if (sourceDoc.isNotEmpty && deletedKeys.contains(sourceDoc)) {
+    return true;
+  }
+  if (snapshot.isNotEmpty && deletedKeys.contains(snapshot)) {
+    return true;
+  }
+  if (time.isNotEmpty && deletedKeys.contains(time)) {
+    return true;
+  }
+
+  if (sourceDoc.isNotEmpty) {
+    final docId = sourceDoc.split('/').last.trim();
+    if (docId.isNotEmpty && deletedKeys.contains(docId)) {
+      return true;
+    }
+  }
+
+  final idMatch = RegExp(
+    r'(mobile_upload_[0-9]+_[a-f0-9]+|manual_[0-9]+_[a-zA-Z0-9_]+)',
+  ).firstMatch('$sourceDoc $snapshot');
+  if (idMatch != null) {
+    final extractedId = idMatch.group(1)!;
+    if (deletedKeys.contains(extractedId)) {
+      return true;
+    }
+  }
+
+  for (final key in deletedKeys) {
+    if (key.length >= 6) {
+      if ((sourceDoc.isNotEmpty && sourceDoc.contains(key)) ||
+          (snapshot.isNotEmpty && snapshot.contains(key))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+PlantDetectionsData filterOutDeletedCaptures(
+  PlantDetectionsData data,
+  Set<String> deletedKeys,
+) {
+  if (deletedKeys.isEmpty) {
+    return data;
+  }
+
+  final filteredHistory = data.history
+      .where((item) => !isDetectionDeleted(item, deletedKeys))
+      .toList();
+
+  final filteredLatestDetections = data.latestDetections
+      .where((item) => !isDetectionDeleted(item, deletedKeys))
+      .toList();
+
+  var effectiveLatest = data.latestDetection;
+  if (effectiveLatest != null &&
+      isDetectionDeleted(effectiveLatest, deletedKeys)) {
+    effectiveLatest = null;
+  }
+
+  var effectiveLatestGroup = filteredLatestDetections;
+  if (effectiveLatest == null && filteredHistory.isNotEmpty) {
+    effectiveLatest = filteredHistory.first;
+    final topTime = effectiveLatest.time.trim();
+    effectiveLatestGroup = topTime.isNotEmpty
+        ? filteredHistory.where((i) => i.time.trim() == topTime).toList()
+        : <DetectionItem>[effectiveLatest];
+  } else if (effectiveLatest != null && effectiveLatestGroup.isEmpty) {
+    effectiveLatestGroup = <DetectionItem>[effectiveLatest];
+  }
+
+  var effectiveSnapshot = data.latestSnapshotUrl.trim();
+  var effectiveCapturedAt = data.latestCapturedAt.trim();
+
+  final snapshotDeleted = deletedKeys.any((k) {
+    if (k.length < 6) return false;
+    return (effectiveSnapshot.isNotEmpty && effectiveSnapshot.contains(k)) ||
+        (effectiveCapturedAt.isNotEmpty && effectiveCapturedAt.contains(k));
+  });
+
+  if (effectiveLatest != null) {
+    effectiveSnapshot = effectiveLatest.snapshotUrl.trim().isNotEmpty
+        ? effectiveLatest.snapshotUrl.trim()
+        : (snapshotDeleted ? '' : effectiveSnapshot);
+    effectiveCapturedAt = effectiveLatest.time.trim().isNotEmpty
+        ? effectiveLatest.time.trim()
+        : (snapshotDeleted ? '' : effectiveCapturedAt);
+  } else if (snapshotDeleted || filteredHistory.isEmpty) {
+    effectiveSnapshot = '';
+    effectiveCapturedAt = '';
+  }
+
+  return PlantDetectionsData(
+    latestDetection: effectiveLatest,
+    latestDetections: effectiveLatestGroup,
+    history: filteredHistory,
+    latestSnapshotUrl: effectiveSnapshot,
+    latestCapturedAt: effectiveCapturedAt,
+  );
+}
+
 Future<dynamic> _readRealtimePlantValue(
   FirebaseRealtimeDatabaseService database,
   String plantId,
@@ -208,7 +406,10 @@ PlantDetectionsData _parseDetectionsFromRealtimePlant(
     plant['detections'] ?? plant['diseaseDetection'] ?? plant['detection'],
   );
   final source = nestedDetections.isNotEmpty ? nestedDetections : plant;
-  final plantData = _parseDetectionsFromDocument(_asStringMap(source));
+  final plantData = _parseDetectionsFromDocument(
+    _asStringMap(source),
+    sourceDocumentPath: 'plants/${plantId.trim()}',
+  );
   final captures =
       plant['plant_captures'] ?? plant['plantCaptures'] ?? plant['captures'];
   final captureData = _parseRealtimeCaptureCollection(
@@ -270,9 +471,13 @@ bool _isRealtimeCaptureDocument(Map<dynamic, dynamic> data) {
 
 @visibleForTesting
 PlantDetectionsData debugParsePlantDetectionsDocument(
-  Map<String, dynamic>? data,
-) {
-  return _parseDetectionsFromDocument(data);
+  Map<String, dynamic>? data, {
+  String sourceDocumentPath = '',
+}) {
+  return _parseDetectionsFromDocument(
+    data,
+    sourceDocumentPath: sourceDocumentPath,
+  );
 }
 
 @visibleForTesting
@@ -297,7 +502,18 @@ PlantDetectionsData debugMergePlantDetectionsByPath(
   return _mergeDetectionsByPath(detectionsByPath);
 }
 
-PlantDetectionsData _parseDetectionsFromDocument(Map<String, dynamic>? data) {
+@visibleForTesting
+PlantDetectionsData debugFilterOutDeletedCaptures(
+  PlantDetectionsData data,
+  Set<String> deletedKeys,
+) {
+  return filterOutDeletedCaptures(data, deletedKeys);
+}
+
+PlantDetectionsData _parseDetectionsFromDocument(
+  Map<String, dynamic>? data, {
+  String sourceDocumentPath = '',
+}) {
   if (data == null) {
     return const PlantDetectionsData();
   }
@@ -335,6 +551,7 @@ PlantDetectionsData _parseDetectionsFromDocument(Map<String, dynamic>? data) {
     _detectionCandidateSources(normalized),
     fallbackTime: latestTime,
     fallbackSnapshotUrl: latestSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
   );
 
   final latest = latestItems.isNotEmpty
@@ -343,12 +560,14 @@ PlantDetectionsData _parseDetectionsFromDocument(Map<String, dynamic>? data) {
           normalized,
           fallbackTime: latestTime,
           fallbackSnapshotUrl: latestSnapshotUrl,
+          sourceDocumentPath: sourceDocumentPath,
         );
 
   final history = _extractDetectionItemsFromCandidates(
     [normalized['history'], normalized['detectionHistory']],
     fallbackTime: latestTime,
     fallbackSnapshotUrl: latestSnapshotUrl,
+    sourceDocumentPath: sourceDocumentPath,
   );
 
   return _buildDetections(
@@ -1385,6 +1604,7 @@ String _snapshotUrlFromMap(
         data['result_image'],
         data['resultImage'],
         data['snapshot'],
+        data['snapshot_url'],
         data['snapshotUrl'],
         data['annotated_image_url'],
         data['annotatedImageUrl'],

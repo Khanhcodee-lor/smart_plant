@@ -1,5 +1,6 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
+import 'package:app_iot/src/core/services/firebase/firebase_realtime_database_service.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
 import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_command_controller.dart';
@@ -114,12 +115,27 @@ class DiseaseDetectionScreen extends BaseView {
                       detectionsAsyncValue.asData?.value;
                   final hasFirestoreDetections =
                       firestoreDetections?.hasAnyData ?? false;
+                  final deletedKeys =
+                      ref.watch(deletedCapturesProvider(plantId));
+
                   var latestDetection = hasFirestoreDetections
                       ? firestoreDetections!.latestDetection
                       : plant.latestDetection;
                   var history = hasFirestoreDetections
                       ? firestoreDetections!.history
                       : plant.history;
+
+                  if (deletedKeys.isNotEmpty) {
+                    history = history
+                        .where((item) => !isDetectionDeleted(item, deletedKeys))
+                        .toList();
+                    if (latestDetection != null &&
+                        isDetectionDeleted(latestDetection, deletedKeys)) {
+                      latestDetection =
+                          history.isNotEmpty ? history.first : null;
+                    }
+                  }
+
                   var latestDetections =
                       (firestoreDetections?.latestDetections.isNotEmpty ??
                           false)
@@ -127,6 +143,15 @@ class DiseaseDetectionScreen extends BaseView {
                       : (latestDetection != null
                             ? <DetectionItem>[latestDetection]
                             : history.take(1).toList());
+
+                  if (deletedKeys.isNotEmpty) {
+                    latestDetections = latestDetections
+                        .where((item) => !isDetectionDeleted(item, deletedKeys))
+                        .toList();
+                    if (latestDetections.isEmpty && latestDetection != null) {
+                      latestDetections = <DetectionItem>[latestDetection];
+                    }
+                  }
                   final firestoreLatestSnapshot =
                       firestoreDetections?.latestSnapshotUrl.trim() ?? '';
                   final firestoreLatestCapturedAt =
@@ -192,6 +217,60 @@ class DiseaseDetectionScreen extends BaseView {
                         CurrentDiseaseCardWidget(
                           latestDetection: latestDetection,
                         ),
+                        if (uploadedImageResult != null &&
+                            !uploadedImageResult.timedOut &&
+                            (uploadedImageResult.severity.isNotEmpty ||
+                                uploadedImageResult.treatment.isNotEmpty)) ...[
+                          SizedBox(height: 12.h),
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(16.r),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(16.r),
+                              border: Border.all(
+                                color: AppColors.primary.withOpacity(0.18),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (uploadedImageResult.severity.isNotEmpty)
+                                  Text(
+                                    'Mức độ: ${uploadedImageResult.severity}',
+                                    style: TextStyle(
+                                      color: AppColors.textMain,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13.sp,
+                                    ),
+                                  ),
+                                if (uploadedImageResult
+                                    .treatment
+                                    .isNotEmpty) ...[
+                                  if (uploadedImageResult.severity.isNotEmpty)
+                                    SizedBox(height: 8.h),
+                                  Text(
+                                    'Hướng dẫn điều trị',
+                                    style: TextStyle(
+                                      color: AppColors.textMain,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13.sp,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4.h),
+                                  Text(
+                                    uploadedImageResult.treatment,
+                                    style: TextStyle(
+                                      color: AppColors.disabledText,
+                                      fontSize: 13.sp,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                         SizedBox(height: 20.h),
                         "Danh sách bệnh mới nhất".h1Custom(
                           size: 16.sp,
@@ -248,6 +327,7 @@ class DiseaseDetectionScreen extends BaseView {
                         SizedBox(height: 12.h),
                         CaptureHistoryListWidget(
                           items: history,
+                          plantId: plantId,
                           emptyMessage: 'Chưa có lịch sử chụp để hiển thị',
                         ),
                         SizedBox(height: 120.h),
@@ -372,8 +452,9 @@ class DiseaseDetectionScreen extends BaseView {
 
     final image = await ImagePicker().pickImage(
       source: source,
-      imageQuality: 88,
-      maxWidth: 1600,
+      imageQuality: 80,
+      maxWidth: 1280,
+      maxHeight: 1280,
     );
     if (image == null) {
       return;
@@ -383,24 +464,52 @@ class DiseaseDetectionScreen extends BaseView {
     }
 
     inFlight.state = true;
+    ref.read(diseaseImageUploadLatestResultProvider(plantId).notifier).state =
+        null;
     final messenger = ScaffoldMessenger.of(context);
 
     try {
       final uploadResult = await ref
           .read(diseaseImageUploadServiceProvider)
-          .uploadImage(plantId: plantId, image: image);
+          .uploadImage(
+            plantId: plantId,
+            image: image,
+            onQueued: () {
+              if (!context.mounted) {
+                return;
+              }
+              messenger
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  buildDiseaseFeedbackSnackBar(
+                    'Đã tải ảnh lên, đang chờ Pi chạy AI nhận diện...',
+                  ),
+                );
+            },
+          );
       if (!context.mounted) {
+        return;
+      }
+
+      ref.invalidate(plantDetectionsProvider(plantId));
+      ref.invalidate(plantControllerProvider);
+      if (uploadResult.timedOut) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            buildDiseaseFeedbackSnackBar(
+              'Hệ thống AI trên Pi đang bận, kết quả sẽ cập nhật sau trong mục Lịch sử.',
+            ),
+          );
         return;
       }
 
       ref.read(diseaseImageUploadLatestResultProvider(plantId).notifier).state =
           uploadResult;
-      ref.invalidate(plantDetectionsProvider(plantId));
-      ref.invalidate(plantControllerProvider);
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          buildDiseaseFeedbackSnackBar('Đã gửi ảnh lên server để phân tích'),
+          buildDiseaseFeedbackSnackBar('Pi đã phân tích xong ảnh cây.'),
         );
     } catch (error) {
       if (!context.mounted) {
@@ -536,6 +645,56 @@ class DiseaseDetectionScreen extends BaseView {
     inFlight.state = true;
     final messenger = ScaffoldMessenger.of(context);
     try {
+      final currentDetections =
+          ref.read(plantDetectionsProvider(plantId)).asData?.value;
+      if (currentDetections != null && plantId.isNotEmpty) {
+        final allKeys = <String>{};
+        for (final item in [
+          ...currentDetections.history,
+          ...currentDetections.latestDetections,
+          if (currentDetections.latestDetection != null)
+            currentDetections.latestDetection!,
+        ]) {
+          final docPath = item.sourceDocumentPath.trim();
+          if (docPath.isNotEmpty) {
+            allKeys.add(docPath);
+            final docId = docPath.split('/').last.trim();
+            if (docId.isNotEmpty) allKeys.add(docId);
+          }
+          final time = item.time.trim();
+          if (time.isNotEmpty) allKeys.add(time);
+          final snapshot = item.snapshotUrl.trim();
+          if (snapshot.isNotEmpty) {
+            allKeys.add(snapshot);
+            final match = RegExp(
+              r'(mobile_upload_[0-9]+_[a-f0-9]+|manual_[0-9]+_[a-zA-Z0-9_]+)',
+            ).firstMatch(snapshot);
+            if (match != null) allKeys.add(match.group(1)!);
+          }
+        }
+        if (allKeys.isNotEmpty) {
+          ref
+              .read(deletedCapturesProvider(plantId).notifier)
+              .update((c) => {...c, ...allKeys});
+          final rtdb = ref.read(firebaseRealtimeDatabaseServiceProvider);
+          for (final k in allKeys) {
+            final safeKey = k.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+            if (safeKey.isNotEmpty) {
+              try {
+                await rtdb.setData(
+                  'plants/$plantId/deleted_captures/$safeKey',
+                  true,
+                );
+                await rtdb.setData(
+                  'plant/$plantId/deleted_captures/$safeKey',
+                  true,
+                );
+              } catch (_) {}
+            }
+          }
+        }
+      }
+
       final result = await ref
           .read(captureHistoryCleanupServiceProvider)
           .deleteAll(plantId);

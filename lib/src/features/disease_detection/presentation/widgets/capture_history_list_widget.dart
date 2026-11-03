@@ -1,23 +1,31 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.dart';
+import 'package:app_iot/src/core/services/firebase/firebase_realtime_database_service.dart';
 import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_history_cleanup_controller.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/controllers/disease_image_upload_controller.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/controllers/plant_detections_provider.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_feedback_snack_bar.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/snapshot_image_viewer.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
+import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class CaptureHistoryListWidget extends StatelessWidget {
   final List<DetectionItem> items;
+  final String? plantId;
   final String emptyMessage;
 
   const CaptureHistoryListWidget({
     super.key,
     required this.items,
+    this.plantId,
     this.emptyMessage = 'Chưa có lịch sử chụp',
   });
 
@@ -67,7 +75,10 @@ class CaptureHistoryListWidget extends StatelessWidget {
                 context: context,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
-                builder: (_) => _CaptureHistoryDetailSheet(items: group),
+                builder: (_) => _CaptureHistoryDetailSheet(
+                  items: group,
+                  plantId: plantId,
+                ),
               );
             },
             child: Ink(
@@ -184,8 +195,12 @@ class CaptureHistoryListWidget extends StatelessWidget {
 
 class _CaptureHistoryDetailSheet extends ConsumerStatefulWidget {
   final List<DetectionItem> items;
+  final String? plantId;
 
-  const _CaptureHistoryDetailSheet({required this.items});
+  const _CaptureHistoryDetailSheet({
+    required this.items,
+    this.plantId,
+  });
 
   @override
   ConsumerState<_CaptureHistoryDetailSheet> createState() =>
@@ -455,20 +470,39 @@ Yêu cầu trả lời ngắn gọn theo các mục:
     );
   }
 
+  String _tryResolvePlantId() {
+    final direct = widget.plantId?.trim() ?? '';
+    if (direct.isNotEmpty) {
+      return direct;
+    }
+
+    for (final item in widget.items) {
+      final path = item.sourceDocumentPath.trim();
+      final match = RegExp(r'plants?/([^/]+)').firstMatch(path);
+      if (match != null && (match.group(1)?.isNotEmpty ?? false)) {
+        return match.group(1)!;
+      }
+      final snapshot = item.snapshotUrl.trim();
+      final snapMatch = RegExp(r'plants/([^/]+)').firstMatch(snapshot);
+      if (snapMatch != null && (snapMatch.group(1)?.isNotEmpty ?? false)) {
+        return snapMatch.group(1)!;
+      }
+    }
+
+    final plants =
+        ref.read(plantControllerProvider).asData?.value ?? const <Plant>[];
+    if (plants.length == 1) {
+      return plants.first.id;
+    }
+    return '';
+  }
+
   Future<void> _handleDeletePressed() async {
+    final plantId = _tryResolvePlantId();
     final documentPaths = widget.items
         .map((i) => i.sourceDocumentPath.trim())
         .where((p) => p.isNotEmpty)
         .toSet();
-
-    if (documentPaths.isEmpty) {
-      showDiseaseFeedbackSnackBar(
-        context,
-        'Không tìm thấy đường dẫn Firebase để xóa',
-        isError: true,
-      );
-      return;
-    }
 
     setState(() {
       _isDeleting = true;
@@ -478,9 +512,197 @@ Yêu cầu trả lời ngắn gọn theo các mục:
     final navigator = Navigator.of(context);
 
     try {
-      await Future.wait(
-        documentPaths.map((path) => ref.read(firebaseFirestoreServiceProvider).deleteData(path))
-      );
+      if (documentPaths.isEmpty && plantId.isNotEmpty) {
+        for (final item in widget.items) {
+          final snapshot = item.snapshotUrl.trim();
+          final match =
+              RegExp(r'(mobile_upload_[0-9]+_[a-f0-9]+)').firstMatch(snapshot);
+          if (match != null) {
+            documentPaths.add('plants/$plantId/plant_captures/${match.group(1)!}');
+            break;
+          }
+        }
+      }
+
+      final rtdb = ref.read(firebaseRealtimeDatabaseServiceProvider);
+
+      if (documentPaths.isEmpty && plantId.isNotEmpty) {
+        for (final base in ['plants/$plantId', 'plant/$plantId']) {
+          try {
+            final captures = await rtdb.getData('$base/plant_captures');
+            if (captures is Map) {
+              for (final entry in captures.entries) {
+                final captureMap =
+                    entry.value is Map ? entry.value as Map : const {};
+                final capTime = (captureMap['time'] ??
+                        captureMap['timestamp'] ??
+                        captureMap['captured_at'] ??
+                        '')
+                    .toString();
+                final capSnapshot = (captureMap['snapshot_url'] ??
+                        captureMap['image_url'] ??
+                        captureMap['annotated_frame_storage_path'] ??
+                        '')
+                    .toString();
+
+                final matches = widget.items.any((item) {
+                  return (item.time.trim().isNotEmpty &&
+                          capTime.contains(item.time.trim())) ||
+                      (item.snapshotUrl.trim().isNotEmpty &&
+                          capSnapshot.contains(item.snapshotUrl.trim()));
+                });
+                if (matches) {
+                  documentPaths.add('$base/plant_captures/${entry.key}');
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (plantId.isNotEmpty) {
+        final uploadedResult =
+            ref.read(diseaseImageUploadLatestResultProvider(plantId));
+        if (uploadedResult != null) {
+          final matchesUploaded = widget.items.any((i) =>
+              (i.time.trim().isNotEmpty &&
+                  uploadedResult.capturedAt == i.time.trim()) ||
+              (i.snapshotUrl.trim().isNotEmpty &&
+                  uploadedResult.snapshotUrl == i.snapshotUrl.trim()) ||
+              (uploadedResult.requestId.isNotEmpty &&
+                  i.snapshotUrl.contains(uploadedResult.requestId)));
+          if (matchesUploaded) {
+            if (uploadedResult.requestId.isNotEmpty) {
+              documentPaths.add(
+                  'plants/$plantId/plant_captures/${uploadedResult.requestId}');
+            }
+            ref
+                .read(diseaseImageUploadLatestResultProvider(plantId).notifier)
+                .state = null;
+          }
+        }
+      }
+
+      if (documentPaths.isEmpty && plantId.isEmpty) {
+        showDiseaseFeedbackSnackBar(
+          context,
+          'Không tìm thấy đường dẫn Firebase để xóa',
+          isError: true,
+        );
+        return;
+      }
+
+      final deletedIdentifiers = <String>{};
+      for (final item in widget.items) {
+        final docPath = item.sourceDocumentPath.trim();
+        if (docPath.isNotEmpty) {
+          deletedIdentifiers.add(docPath);
+          final docId = docPath.split('/').last.trim();
+          if (docId.isNotEmpty) {
+            deletedIdentifiers.add(docId);
+          }
+        }
+        final time = item.time.trim();
+        if (time.isNotEmpty) {
+          deletedIdentifiers.add(time);
+        }
+        final snapshot = item.snapshotUrl.trim();
+        if (snapshot.isNotEmpty) {
+          deletedIdentifiers.add(snapshot);
+          final match = RegExp(
+            r'(mobile_upload_[0-9]+_[a-f0-9]+|manual_[0-9]+_[a-zA-Z0-9_]+)',
+          ).firstMatch(snapshot);
+          if (match != null) {
+            deletedIdentifiers.add(match.group(1)!);
+          }
+        }
+      }
+
+      for (final path in documentPaths) {
+        final docId = path.split('/').last.trim();
+        if (docId.isNotEmpty) {
+          deletedIdentifiers.add(docId);
+        }
+        deletedIdentifiers.add(path);
+      }
+
+      if (plantId.isNotEmpty) {
+        ref.read(deletedCapturesProvider(plantId).notifier).update((current) {
+          return {...current, ...deletedIdentifiers};
+        });
+
+        for (final identifier in deletedIdentifiers) {
+          final safeKey = identifier.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+          if (safeKey.isNotEmpty) {
+            try {
+              await rtdb.setData('plants/$plantId/deleted_captures/$safeKey', true);
+              await rtdb.setData('plant/$plantId/deleted_captures/$safeKey', true);
+            } catch (_) {}
+          }
+        }
+      }
+
+      for (final path in documentPaths) {
+        try {
+          await rtdb.deleteData(path);
+        } catch (_) {}
+
+        final mirror = path.startsWith('plants/')
+            ? 'plant/${path.substring(7)}'
+            : (path.startsWith('plant/') ? 'plants/${path.substring(6)}' : null);
+        if (mirror != null) {
+          try {
+            await rtdb.deleteData(mirror);
+          } catch (_) {}
+        }
+      }
+
+      final firestore = ref.read(firebaseFirestoreServiceProvider);
+      for (final path in documentPaths) {
+        try {
+          if (!path.contains('/plant_captures') && !path.contains('/detections')) {
+            await firestore.updateData(path, clearLatestDetectionFields());
+          } else {
+            await firestore.deleteData(path);
+          }
+        } catch (_) {}
+
+        final mirror = path.startsWith('plants/')
+            ? 'plant/${path.substring(7)}'
+            : (path.startsWith('plant/') ? 'plants/${path.substring(6)}' : null);
+        if (mirror != null) {
+          try {
+            if (!mirror.contains('/plant_captures') &&
+                !mirror.contains('/detections')) {
+              await firestore.updateData(mirror, clearLatestDetectionFields());
+            } else {
+              await firestore.deleteData(mirror);
+            }
+          } catch (_) {}
+        }
+      }
+
+      for (final item in widget.items) {
+        final url = item.snapshotUrl.trim();
+        if (url.isEmpty) {
+          continue;
+        }
+        try {
+          if (url.startsWith('http://') ||
+              url.startsWith('https://') ||
+              url.startsWith('gs://')) {
+            await FirebaseStorage.instance.refFromURL(url).delete();
+          } else if (!url.startsWith('/')) {
+            await FirebaseStorage.instance.ref(url).delete();
+          }
+        } catch (_) {}
+      }
+
+      if (plantId.isNotEmpty) {
+        ref.invalidate(plantDetectionsProvider(plantId));
+        ref.invalidate(plantControllerProvider);
+      }
+
       if (!mounted) {
         return;
       }

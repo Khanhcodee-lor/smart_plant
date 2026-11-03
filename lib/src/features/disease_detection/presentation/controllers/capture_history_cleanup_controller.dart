@@ -1,4 +1,5 @@
 import 'package:app_iot/src/core/services/firebase/firebase_firestore_service.dart';
+import 'package:app_iot/src/core/services/firebase/firebase_realtime_database_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,14 +14,38 @@ class CaptureHistoryCleanupResult {
 }
 
 class CaptureHistoryCleanupService {
-  const CaptureHistoryCleanupService(this._firestore);
+  const CaptureHistoryCleanupService(this._firestore, [this._realtimeDatabase]);
 
   final FirebaseFirestoreService _firestore;
+  final FirebaseRealtimeDatabaseService? _realtimeDatabase;
 
   Future<CaptureHistoryCleanupResult> deleteAll(String plantId) async {
     final normalizedPlantId = plantId.trim();
     if (normalizedPlantId.isEmpty) {
       throw ArgumentError('Plant id must not be empty.');
+    }
+
+    if (_realtimeDatabase != null) {
+      for (final path in [
+        'plants/$normalizedPlantId/plant_captures',
+        'plant/$normalizedPlantId/plant_captures',
+        'plants/$normalizedPlantId/latest_disease',
+        'plant/$normalizedPlantId/latest_disease',
+        'plants/$normalizedPlantId/diseaseDetection',
+        'plant/$normalizedPlantId/diseaseDetection',
+        'plants/$normalizedPlantId/detections',
+        'plant/$normalizedPlantId/detections',
+        'plants/$normalizedPlantId/detection',
+        'plant/$normalizedPlantId/detection',
+        'plants/$normalizedPlantId/latest_snapshot_url',
+        'plant/$normalizedPlantId/latest_snapshot_url',
+        'plants/$normalizedPlantId/latest_captured_at',
+        'plant/$normalizedPlantId/latest_captured_at',
+      ]) {
+        try {
+          await _realtimeDatabase.deleteData(path);
+        } catch (_) {}
+      }
     }
 
     var deletedDocuments = 0;
@@ -140,7 +165,8 @@ bool _canIgnoreCleanupPathError(FirebaseException error) {
 final captureHistoryCleanupServiceProvider =
     Provider<CaptureHistoryCleanupService>((ref) {
       final firestore = ref.watch(firebaseFirestoreServiceProvider);
-      return CaptureHistoryCleanupService(firestore);
+      final database = ref.watch(firebaseRealtimeDatabaseServiceProvider);
+      return CaptureHistoryCleanupService(firestore, database);
     });
 
 final captureHistoryCleanupInFlightProvider = StateProvider.autoDispose

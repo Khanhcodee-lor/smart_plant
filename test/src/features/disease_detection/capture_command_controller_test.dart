@@ -55,6 +55,9 @@ class _FakeRealtimeDatabaseService implements FirebaseRealtimeDatabaseService {
   Future<void> updateData(String path, Map<String, dynamic> data) async {
     updates.add(_DatabaseUpdate(path, Map<String, dynamic>.from(data)));
   }
+
+  @override
+  Future<void> deleteData(String path) async {}
 }
 
 class _DatabaseUpdate {

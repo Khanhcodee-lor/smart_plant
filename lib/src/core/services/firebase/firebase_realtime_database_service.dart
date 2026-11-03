@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -53,6 +54,27 @@ class FirebaseRealtimeDatabaseService {
     await _sendRequest(method: 'PUT', path: path, body: jsonEncode(data));
   }
 
+  Future<void> deleteData(String path) async {
+    Object? lastError;
+    try {
+      await FirebaseDatabase.instance.ref(path).remove();
+      return;
+    } catch (e) {
+      lastError = e;
+    }
+
+    try {
+      await _sendRequest(method: 'DELETE', path: path, body: '');
+      return;
+    } catch (e) {
+      lastError ??= e;
+    }
+
+    if (lastError != null) {
+      throw lastError;
+    }
+  }
+
   Future<void> _sendRequest({
     required String method,
     required String path,
@@ -69,6 +91,10 @@ class FirebaseRealtimeDatabaseService {
         uri,
         headers: const {'Content-Type': 'application/json'},
         body: body,
+      ),
+      'DELETE' => await _client.delete(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
       ),
       _ => throw FirebaseRealtimeDatabaseException(
         'Unsupported Realtime Database method: $method',

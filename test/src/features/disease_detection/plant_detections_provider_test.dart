@@ -614,4 +614,62 @@ void main() {
     expect(parsed.latestDetection?.diseaseClass, 'Tomato leaf bacterial spot');
     expect(parsed.latestSnapshotUrl, 'detections/pi_latest.jpg');
   });
+
+  test('filter out deleted capture by document id and fall back to next capture', () {
+    final doc1 = const FirestoreDocumentData(
+      id: 'mobile_upload_1793169292379_406bb957',
+      path: 'plants/tomato_001/plant_captures/mobile_upload_1793169292379_406bb957',
+      data: {
+        'disease_class': 'Không phát hiện bệnh',
+        'captured_at': '2026-10-28 13:34:52',
+        'snapshot_url': 'https://storage/mobile_upload_1793169292379_406bb957.jpg',
+      },
+    );
+    final doc2 = const FirestoreDocumentData(
+      id: 'mobile_upload_1793065399185_1c36a71c',
+      path: 'plants/tomato_001/plant_captures/mobile_upload_1793065399185_1c36a71c',
+      data: {
+        'disease_class': 'Cây khỏe mạnh',
+        'captured_at': '2026-10-27 08:43:19',
+        'snapshot_url': 'https://storage/mobile_upload_1793065399185_1c36a71c.jpg',
+      },
+    );
+
+    final parsed = debugParsePlantDetectionsCollection([doc1, doc2]);
+    expect(parsed.history, hasLength(2));
+    expect(parsed.latestDetection?.sourceDocumentPath, contains('mobile_upload_1793169292379_406bb957'));
+
+    final filtered = debugFilterOutDeletedCaptures(parsed, {
+      'mobile_upload_1793169292379_406bb957',
+    });
+
+    expect(filtered.history, hasLength(1));
+    expect(filtered.history.first.sourceDocumentPath, contains('mobile_upload_1793065399185_1c36a71c'));
+    expect(filtered.latestDetection?.sourceDocumentPath, contains('mobile_upload_1793065399185_1c36a71c'));
+    expect(filtered.latestSnapshotUrl, 'https://storage/mobile_upload_1793065399185_1c36a71c.jpg');
+  });
+
+  test('filter out all deleted captures leaves clean empty data', () {
+    final doc = const FirestoreDocumentData(
+      id: 'mobile_upload_1793169292379_406bb957',
+      path: 'plants/tomato_001/plant_captures/mobile_upload_1793169292379_406bb957',
+      data: {
+        'disease_class': 'Không phát hiện bệnh',
+        'captured_at': '2026-10-28 13:34:52',
+        'snapshot_url': 'https://storage/mobile_upload_1793169292379_406bb957.jpg',
+      },
+    );
+
+    final parsed = debugParsePlantDetectionsCollection([doc]);
+    final filtered = debugFilterOutDeletedCaptures(parsed, {
+      'mobile_upload_1793169292379_406bb957',
+    });
+
+    expect(filtered.history, isEmpty);
+    expect(filtered.latestDetections, isEmpty);
+    expect(filtered.latestDetection, isNull);
+    expect(filtered.latestSnapshotUrl, isEmpty);
+    expect(filtered.latestCapturedAt, isEmpty);
+  });
 }
+
