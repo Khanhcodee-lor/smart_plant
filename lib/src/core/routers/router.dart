@@ -4,6 +4,7 @@ import 'package:app_iot/src/features/auth/presentation/controllers/views/login_s
 import 'package:app_iot/src/features/bluetooth/presentation/views/provisioning_screen.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/view/disease_detection_screen.dart';
 import 'package:app_iot/src/features/main/presentation/views/main_screen.dart';
+import 'package:app_iot/src/features/home/presentation/views/notifications_screen.dart';
 import 'package:app_iot/src/features/regime/presentation/views/humidity_detail_screen.dart';
 import 'package:app_iot/src/features/regime/presentation/views/soil_moisture_detail_screen.dart';
 import 'package:app_iot/src/features/regime/presentation/views/temperature_detail_screen.dart';
@@ -131,6 +132,11 @@ GoRouter router(Ref ref) {
         path: '/bluetooth-scan',
         name: 'bluetooth_scan',
         builder: (context, state) => const ProvisioningScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        name: 'notifications',
+        builder: (context, state) => const NotificationsScreen(),
       ),
     ],
   );

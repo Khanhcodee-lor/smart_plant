@@ -1079,56 +1079,12 @@ bool _shouldUseUploadedImageResult(
     return false;
   }
 
-  final uploadedSnapshotUrl = uploadResult.snapshotUrl.trim();
-  final remoteSnapshot = remoteSnapshotUrl.trim();
-  final uploadDetections = uploadResult.detections;
-  final hasUploadData =
-      uploadedSnapshotUrl.isNotEmpty || uploadDetections.isNotEmpty;
-  final hasRemoteData =
-      remoteSnapshot.isNotEmpty ||
-      remoteCapturedAt.trim().isNotEmpty ||
-      remoteLatestDetections.isNotEmpty;
-
-  if (!hasUploadData) {
-    return false;
-  }
-
-  if (!hasRemoteData) {
-    return true;
-  }
-
-  if (uploadedSnapshotUrl.isNotEmpty &&
-      _normalizeSnapshotKey(uploadedSnapshotUrl) ==
-          _normalizeSnapshotKey(remoteSnapshot)) {
-    return false;
-  }
-
-  final uploadedTime = _tryParseDetectionTime(uploadResult.capturedAt);
-  final remoteTime =
-      _newestDetectionTime(remoteLatestDetections) ??
-      _tryParseDetectionTime(remoteCapturedAt);
-  if (uploadedTime != null && remoteTime != null) {
-    return remoteTime.isBefore(uploadedTime);
-  }
-
-  if (uploadDetections.isEmpty) {
-    return uploadedSnapshotUrl.isNotEmpty;
-  }
-
-  if (remoteSnapshot.isNotEmpty &&
-      _remoteSnapshotLooksLikeUploadedResult(
-        uploadResult,
-        remoteCapturedAt,
-        remoteLatestDetections,
-      )) {
-    return false;
-  }
-
-  if (uploadResult.hasServerSnapshot) {
-    return true;
-  }
-
-  return true;
+  // This result belongs to the explicit, request-id-scoped mobile upload that
+  // just completed. Pi/Firestore timestamps may describe an older frame or
+  // use a different format, so comparing them can leave the previous image on
+  // screen even though this upload has finished successfully.
+  return uploadResult.snapshotUrl.trim().isNotEmpty ||
+      uploadResult.detections.isNotEmpty;
 }
 
 bool _shouldUseUploadedSnapshot(DiseaseImageUploadResult uploadResult) {

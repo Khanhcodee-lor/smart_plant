@@ -1,5 +1,7 @@
 package com.example.app_iot
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
@@ -27,6 +29,7 @@ class MainActivity : FlutterActivity() {
         private const val BLUETOOTH_CHANNEL = "app_iot/bluetooth"
         private const val RFCOMM_EVENTS_CHANNEL = "app_iot/rfcomm_events"
         private const val REQUEST_BLUETOOTH_CONNECT = 1001
+        private const val PLANT_ALERTS_CHANNEL = "plant_alerts"
         private val SPP_UUID: UUID =
             UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     }
@@ -41,6 +44,21 @@ class MainActivity : FlutterActivity() {
     private var rfcommOutput: OutputStream? = null
     private var rfcommReaderThread: Thread? = null
     private var rfcommEventSink: EventChannel.EventSink? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                PLANT_ALERTS_CHANNEL,
+                "Thông báo cây trồng",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Kết quả nhận diện sâu bệnh từ Raspberry Pi"
+            }
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

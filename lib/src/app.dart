@@ -1,16 +1,48 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:go_router/go_router.dart';
 
 import 'core/constants/app_colors.dart';
 import 'core/routers/router.dart';
+import 'core/services/firebase/firebase_messaging_service.dart';
 
-class MyApp extends ConsumerWidget {
+final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final router = ref.read(routerProvider);
+      unawaited(
+        ref
+            .read(firebaseMessagingServiceProvider)
+            .init(
+              onNotificationOpened: (message) =>
+                  _openNotification(router, message),
+              onForegroundMessage: (message) =>
+                  _showForegroundNotification(router, message),
+            ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(firebaseMessagingServiceProvider);
     final goRouter = ref.watch(routerProvider);
 
     return ScreenUtilInit(
@@ -22,10 +54,45 @@ class MyApp extends ConsumerWidget {
           title: 'IoT Plant Doctor',
           debugShowCheckedModeBanner: false,
           routerConfig: goRouter,
+          scaffoldMessengerKey: rootScaffoldMessengerKey,
           theme: _buildAppTheme(),
         );
       },
     );
+  }
+
+  void _openNotification(GoRouter router, RemoteMessage message) {
+    final plantId = (message.data['plant_id'] ?? message.data['plantId'])
+        ?.toString()
+        .trim();
+    if (plantId != null && plantId.isNotEmpty) {
+      router.goNamed('plant_detail', pathParameters: {'id': plantId});
+    } else {
+      router.go('/notifications');
+    }
+  }
+
+  void _showForegroundNotification(GoRouter router, RemoteMessage message) {
+    final title = message.notification?.title ??
+        message.data['title']?.toString() ??
+        'Thông báo cây trồng';
+    final body = message.notification?.body ??
+        message.data['body']?.toString() ??
+        message.data['message']?.toString() ??
+        'Có kết quả nhận diện mới.';
+
+    rootScaffoldMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$title\n$body'),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'XEM',
+            onPressed: () => _openNotification(router, message),
+          ),
+        ),
+      );
   }
 
   /// ===============================

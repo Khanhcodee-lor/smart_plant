@@ -78,7 +78,7 @@ class CurrentDiseaseCardWidget extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  "Cảnh báo hiện tại".bodyCustom(
+                  "Tình trạng hiện tại".bodyCustom(
                     size: 14.sp,
                     color: AppColors.textMain,
                     fontWeight: FontWeight.bold,

@@ -16,5 +16,10 @@ void main() {
   test('treats tomato healthy labels as healthy', () {
     expect(isHealthyDisease('Tomato healthy'), isTrue);
     expect(isHealthyDisease('Tomato___healthy'), isTrue);
+    expect(isHealthyDisease('Cây khỏe mạnh (Healthy)'), isTrue);
+    expect(isHealthyDisease('cây khỏe mạnh'), isTrue);
+    expect(isHealthyDisease('No disease detected'), isTrue);
+    expect(isHealthyDisease('Không phát hiện bệnh'), isTrue);
+    expect(isHealthyDisease('Tomato leaf late blight'), isFalse);
   });
 }

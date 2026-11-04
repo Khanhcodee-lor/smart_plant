@@ -6,6 +6,9 @@ String translateDiseaseLabel(String diseaseName) {
     'khong phat hien benh': 'Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh',
     'healthy': 'Khỏe mạnh',
     'tomato healthy': 'Khỏe mạnh',
+    'khỏe mạnh': 'Khỏe mạnh',
+    'cây khỏe mạnh': 'Khỏe mạnh',
+    'khoe manh': 'Khỏe mạnh',
     'tomato leaf bacterial spot': 'Lá cà chua bệnh đốm vi khuẩn',
     'tomato leaf late blight': 'Bệnh mốc sương trên lá cà chua',
     'tomato late blight': 'Bệnh mốc sương trên lá cà chua',
@@ -28,10 +31,19 @@ bool isHealthyDisease(String diseaseName) {
   final normalized = _normalizeDiseaseKey(diseaseName);
   return normalized == 'healthy' ||
       normalized == 'tomato healthy' ||
+      normalized == 'khỏe mạnh' ||
+      normalized == 'cây khỏe mạnh' ||
+      normalized == 'cây khỏe mạnh (healthy)' ||
+      normalized == 'khoe manh' ||
       normalized == 'no disease detected' ||
       normalized == 'khong phat hien benh' ||
       normalized ==
-          _normalizeDiseaseKey('Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh');
+          _normalizeDiseaseKey('Kh\u00f4ng ph\u00e1t hi\u1ec7n b\u1ec7nh') ||
+      normalized.contains('healthy') ||
+      normalized.contains('khỏe mạnh') ||
+      normalized.contains('khoe manh') ||
+      normalized.contains('no disease') ||
+      normalized.contains('khong phat hien benh');
 }
 
 String _normalizeDiseaseKey(String diseaseName) {
