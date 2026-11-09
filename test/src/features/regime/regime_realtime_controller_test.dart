@@ -48,13 +48,13 @@ void main() {
   });
 
   test('build pump control path under realtime plant node', () {
-    expect(buildPumpControlPath('tomato_001'), 'plant/tomato_001/control/pump');
+    expect(buildPumpControlPath('tomato_001'), 'plants/tomato_001/control/pump');
   });
 
-  test('build pump control paths for current and legacy roots', () {
+  test('build pump control paths prefer the current root', () {
     expect(buildPumpControlPaths('tomato_001'), [
-      'plant/tomato_001/control/pump',
       'plants/tomato_001/control/pump',
+      'plant/tomato_001/control/pump',
     ]);
   });
 

@@ -27,77 +27,101 @@ class ChatbotController extends StateNotifier<ChatState> {
               text:
                   "Xin chào! Tôi là trợ lý AI của bạn. Tôi có thể giúp bạn điều gì về các thiết bị trồng cây?",
               isUser: false,
+              includeInHistory: false,
             ),
           ],
         ),
       );
 
   Future<void> sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
-    // 1. Thêm tin nhắn của User vào danh sách và bật trạng thái Loading
+    final cleanText = text.trim();
+    if (cleanText.isEmpty || state.isLoading) return;
+
+    final history = state.messages
+        .where((message) => message.includeInHistory && !message.isError)
+        .map(
+          (message) => <String, String>{
+            'role': message.isUser ? 'user' : 'model',
+            'text': message.text,
+          },
+        )
+        .toList(growable: false);
+
     state = state.copyWith(
       messages: [
         ...state.messages,
-        ChatMessage(text: text, isUser: true),
+        ChatMessage(text: cleanText, isUser: true),
       ],
       isLoading: true,
     );
 
     try {
-      // 2. GỌI FIREBASE CLOUD FUNCTION có tên là 'askChatbot'
-      final callable = FirebaseFunctions.instance.httpsCallable('askChatbot');
-
-      // Thêm chỉ dẫn để AI trả lời ngắn gọn, đúng trọng tâm
-      const systemPrefix =
-          '[Hệ thống: Trả lời ngắn gọn, đúng trọng tâm, tối đa 3-5 câu. '
-          'Không liệt kê dài dòng. Nếu cần chi tiết, hỏi người dùng muốn biết thêm không. '
-          'Nếu người dùng hỏi về bệnh cây có kèm độ tin cậy %, hãy đánh giá: '
-          'trên 70% là bệnh nặng cần xử lý gấp, 40-70% là bệnh trung bình cần theo dõi và xử lý, '
-          'dưới 40% là bệnh nhẹ và đưa ra giải pháp phòng ngừa sớm.]\n\n';
-
-      // Truyền dữ liệu dạng Map lên Server
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-southeast1',
+      ).httpsCallable('askChatbot');
       final result = await callable.call(<String, dynamic>{
-        'text': '$systemPrefix$text',
+        'text': cleanText,
+        'history': history,
       });
 
       if (!mounted) return;
 
-      // Lấy câu trả lời (trường 'reply' đã định nghĩa ở index.js)
-      String aiResponse = result.data['reply'] ?? "AI không có phản hồi";
-      aiResponse = formatAssistantMessageForDisplay(aiResponse);
+      final responseData = result.data;
+      final reply = responseData is Map ? responseData['reply'] : null;
+      if (reply is! String || reply.trim().isEmpty) {
+        throw StateError('Cloud Function returned an empty reply.');
+      }
 
-      // 3. Thêm tin nhắn AI vào state, tắt Loading
       state = state.copyWith(
         messages: [
           ...state.messages,
-          ChatMessage(text: aiResponse, isUser: false),
+          ChatMessage(
+            text: formatAssistantMessageForDisplay(reply.trim()),
+            isUser: false,
+          ),
         ],
         isLoading: false,
       );
     } on FirebaseFunctionsException catch (error) {
       if (!mounted) return;
-      final errorDetails = error.message?.toLowerCase() ?? '';
-      final message = errorDetails.contains('reported as leaked')
-          ? 'Khóa Gemini trên máy chủ đã bị Google chặn. Quản trị viên cần tạo khóa mới và cập nhật Cloud Function askChatbot.'
-          : 'Lỗi kết nối: ${error.message}';
-      state = state.copyWith(
-        messages: [
-          ...state.messages,
-          ChatMessage(text: message, isUser: false),
-        ],
-        isLoading: false,
-      );
+      final message = switch (error.code) {
+        'unauthenticated' => 'Bạn cần đăng nhập để sử dụng trợ lý AI.',
+        'resource-exhausted' => 'Hệ thống đang quá tải. Bạn thử lại sau nhé.',
+        'unavailable' => 'Trợ lý AI đang bận. Bạn thử lại sau ít phút nhé.',
+        'failed-precondition' =>
+          'Trợ lý AI chưa được cấu hình đầy đủ trên Firebase.',
+        'invalid-argument' => error.message ?? 'Tin nhắn chưa hợp lệ.',
+        _ => 'Không kết nối được với trợ lý AI. Bạn thử lại sau nhé.',
+      };
+      _appendErrorMessage(message);
     } catch (e) {
       if (!mounted) return;
-      // Lỗi cục bộ khác
-      state = state.copyWith(
-        messages: [
-          ...state.messages,
-          ChatMessage(text: "Đã xảy ra lỗi không xác định.", isUser: false),
-        ],
-        isLoading: false,
+      _appendErrorMessage('Trợ lý AI chưa thể trả lời lúc này. Bạn thử lại nhé.');
+    }
+  }
+
+  void _appendErrorMessage(String text) {
+    final messages = state.messages.toList();
+    final failedUserIndex = messages.lastIndexWhere(
+      (message) => message.isUser,
+    );
+    if (failedUserIndex >= 0) {
+      final failedMessage = messages[failedUserIndex];
+      messages[failedUserIndex] = ChatMessage(
+        text: failedMessage.text,
+        isUser: true,
+        includeInHistory: false,
+        timestamp: failedMessage.timestamp,
       );
     }
+
+    state = state.copyWith(
+      messages: [
+        ...messages,
+        ChatMessage(text: text, isUser: false, isError: true),
+      ],
+      isLoading: false,
+    );
   }
 }
 

@@ -1,13 +1,9 @@
-import 'package:app_iot/src/core/constants/api_config.dart';
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
-import 'package:app_iot/src/features/chatbot/data/cloud_tts_service.dart';
-import 'package:app_iot/src/features/chatbot/data/voice_transcription_service.dart';
 import 'package:app_iot/src/features/chatbot/presentation/controllers/chatbot_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class AiChatbotSheet extends ConsumerStatefulWidget {
   final String? initialMessage;
@@ -27,17 +23,6 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final CloudTtsService _ttsService = CloudTtsService();
-  final VoiceTranscriptionService _voiceService = VoiceTranscriptionService();
-
-  bool _isRecording = false;
-  bool _isTranscribing = false;
-  bool _isTtsPlaying = false;
-  bool _isTtsEnabled = true;
-
-  /// Index của tin nhắn AI đang được đọc (-1 = không đọc gì)
-  int _currentSpeakingIndex = -1;
-
   @override
   void initState() {
     super.initState();
@@ -45,19 +30,6 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
     _textController.addListener(() {
       if (mounted) setState(() {});
     });
-
-    // Callback từ TTS service
-    _ttsService.onStart = () {
-      if (mounted) setState(() => _isTtsPlaying = true);
-    };
-    _ttsService.onComplete = () {
-      if (mounted) {
-        setState(() {
-          _isTtsPlaying = false;
-          _currentSpeakingIndex = -1;
-        });
-      }
-    };
 
     final initialMessage = widget.initialMessage?.trim();
     if (initialMessage == null || initialMessage.isEmpty) {
@@ -80,142 +52,6 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
     }
   }
 
-  // ===================== GHI ÂM & NHẬN DIỆN GIỌNG NÓI =====================
-
-  void _toggleRecording() async {
-    if (_isRecording) {
-      await _stopRecordingAndTranscribe();
-    } else {
-      await _startRecording();
-    }
-  }
-
-  Future<void> _startRecording() async {
-    // Dừng TTS nếu đang phát
-    if (_isTtsPlaying) {
-      await _ttsService.stop();
-    }
-
-    // Xin quyền Microphone
-    final micStatus = await Permission.microphone.request();
-    if (!micStatus.isGranted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Vui lòng cấp quyền microphone để sử dụng giọng nói.',
-            ),
-            backgroundColor: AppColors.error,
-            action: SnackBarAction(
-              label: 'Cài đặt',
-              textColor: Colors.white,
-              onPressed: () => openAppSettings(),
-            ),
-          ),
-        );
-      }
-      return;
-    }
-
-    // Kiểm tra API key
-    if (ApiConfig.googleSpeechApiKey.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Dịch vụ giọng nói chưa được cấu hình an toàn trên máy chủ.',
-            ),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-      return;
-    }
-
-    final started = await _voiceService.startRecording();
-    if (started && mounted) {
-      setState(() => _isRecording = true);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Không thể bắt đầu ghi âm.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    }
-  }
-
-  Future<void> _stopRecordingAndTranscribe() async {
-    if (!_isRecording) return;
-
-    setState(() {
-      _isRecording = false;
-      _isTranscribing = true;
-    });
-
-    try {
-      final transcript = await _voiceService.stopAndTranscribe(
-        ApiConfig.googleSpeechApiKey,
-      );
-
-      if (!mounted) return;
-
-      if (transcript != null && transcript.isNotEmpty) {
-        _textController.text = transcript;
-        _textController.selection = TextSelection.fromPosition(
-          TextPosition(offset: transcript.length),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Không nhận diện được giọng nói. Hãy nói to và rõ hơn.',
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Transcription error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Lỗi xử lý giọng nói.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isTranscribing = false);
-      }
-    }
-  }
-
-  // ===================== TTS — AI ĐỌC VĂN BẢN =====================
-
-  void _speakMessage(String text, int messageIndex) {
-    if (ApiConfig.googleSpeechApiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Dịch vụ đọc giọng nói chưa được cấu hình an toàn trên máy chủ.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (_isTtsPlaying && _currentSpeakingIndex == messageIndex) {
-      // Đang đọc tin nhắn này → dừng lại
-      _ttsService.stop();
-      return;
-    }
-
-    setState(() => _currentSpeakingIndex = messageIndex);
-    _ttsService.speak(text, ApiConfig.googleSpeechApiKey);
-  }
-
   // ===================== CUỘN & GỬI =====================
 
   void _scrollToBottom() {
@@ -232,10 +68,8 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
 
   void _sendMessage() {
     final text = _textController.text;
-    if (text.trim().isNotEmpty) {
-      if (_isTtsPlaying) {
-        _ttsService.stop();
-      }
+    if (text.trim().isNotEmpty &&
+        !ref.read(chatbotControllerProvider).isLoading) {
       ref.read(chatbotControllerProvider.notifier).sendMessage(text);
       _textController.clear();
       _scrollToBottom();
@@ -244,13 +78,6 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
 
   @override
   void dispose() {
-    // Xóa callback trước để tránh gọi setState sau khi widget bị dispose
-    _ttsService.onStart = null;
-    _ttsService.onComplete = null;
-    _ttsService.stop();
-    _ttsService.dispose();
-    _voiceService.cancelRecording();
-    _voiceService.dispose();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -263,19 +90,6 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
       if (previous?.messages.length != next.messages.length ||
           previous?.isLoading != next.isLoading) {
         _scrollToBottom();
-      }
-
-      // Khi AI trả lời xong → tự động đọc nếu TTS đang bật
-      if (_isTtsEnabled &&
-          previous?.isLoading == true &&
-          next.isLoading == false) {
-        if (next.messages.isNotEmpty) {
-          final lastMsg = next.messages.last;
-          if (!lastMsg.isUser) {
-            final msgIndex = next.messages.length - 1;
-            _speakMessage(lastMsg.text, msgIndex);
-          }
-        }
       }
     });
     final chatState = ref.watch(chatbotControllerProvider);
@@ -299,29 +113,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Nút bật/tắt TTS
-                InkWell(
-                  onTap: () {
-                    setState(() => _isTtsEnabled = !_isTtsEnabled);
-                    if (!_isTtsEnabled && _isTtsPlaying) {
-                      _ttsService.stop();
-                    }
-                  },
-                  child: Container(
-                    padding: EdgeInsets.all(4.w),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isTtsEnabled
-                          ? Icons.volume_up_rounded
-                          : Icons.volume_off_rounded,
-                      size: 20.sp,
-                      color: _isTtsEnabled ? AppColors.accent : Colors.grey,
-                    ),
-                  ),
-                ),
+                SizedBox(width: 28.w),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -429,8 +221,6 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                 final msgIndex = index - 1;
                 final msg = chatState.messages[msgIndex];
                 final isUser = msg.isUser;
-                final isSpeakingThis =
-                    _isTtsPlaying && _currentSpeakingIndex == msgIndex;
 
                 return Padding(
                   padding: EdgeInsets.only(bottom: 16.h),
@@ -469,35 +259,6 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                           color: isUser ? Colors.white : AppColors.textMain,
                         ),
                       ),
-                      // Nút phát loa cho tin nhắn AI
-                      if (!isUser) ...[
-                        SizedBox(height: 4.h),
-                        GestureDetector(
-                          onTap: () => _speakMessage(msg.text, msgIndex),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isSpeakingThis
-                                    ? Icons.stop_circle_outlined
-                                    : Icons.volume_up_outlined,
-                                size: 16.sp,
-                                color: isSpeakingThis
-                                    ? AppColors.accent
-                                    : AppColors.disabledText,
-                              ),
-                              SizedBox(width: 4.w),
-                              (isSpeakingThis ? "Đang đọc..." : "Nghe")
-                                  .bodyCustom(
-                                    size: 11.sp,
-                                    color: isSpeakingThis
-                                        ? AppColors.accent
-                                        : AppColors.disabledText,
-                                  ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 );
@@ -515,60 +276,11 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
             ),
             child: Column(
               children: [
-                // Hiển thị trạng thái ghi âm
-                if (_isRecording)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 8.h),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 10.w,
-                          height: 10.w,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        SizedBox(width: 8.w),
-                        "Đang ghi âm... Nhấn lại để dừng".bodyCustom(
-                          size: 12.sp,
-                          color: Colors.red,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_isTranscribing)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 8.h),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 14.w,
-                          height: 14.w,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.accent,
-                          ),
-                        ),
-                        SizedBox(width: 8.w),
-                        "Đang xử lý giọng nói...".bodyCustom(
-                          size: 12.sp,
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ],
-                    ),
-                  ),
                 Container(
                   padding: EdgeInsets.all(3.w),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: _isRecording
-                          ? [Colors.red, Colors.redAccent]
-                          : [AppColors.accent, Colors.pink.shade200],
+                      colors: [AppColors.accent, Colors.pink.shade200],
                     ),
                     borderRadius: BorderRadius.circular(30.r),
                   ),
@@ -582,19 +294,13 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                         Expanded(
                           child: TextField(
                             controller: _textController,
-                            enabled: !_isRecording && !_isTranscribing,
+                            textInputAction: TextInputAction.send,
                             onSubmitted: (_) => _sendMessage(),
                             decoration: InputDecoration(
                               filled: false,
-                              hintText: _isRecording
-                                  ? "Đang lắng nghe..."
-                                  : _isTranscribing
-                                  ? "Đang xử lý..."
-                                  : "Hỏi bất cứ điều gì",
+                              hintText: "Hỏi bất cứ điều gì",
                               hintStyle: TextStyle(
-                                color: _isRecording
-                                    ? Colors.red
-                                    : AppColors.textHint,
+                                color: AppColors.textHint,
                                 fontSize: 12.sp,
                               ),
                               border: InputBorder.none,
@@ -608,41 +314,25 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                             ),
                           ),
                         ),
-                        // Nút Mic (ghi âm)
-                        if (_textController.text.trim().isEmpty &&
-                            !_isTranscribing)
-                          IconButton(
-                            icon: Icon(
-                              _isRecording ? Icons.stop_rounded : Icons.mic,
-                              color: _isRecording
-                                  ? Colors.red
-                                  : AppColors.accent,
-                              size: _isRecording ? 28.sp : 22.sp,
-                            ),
-                            onPressed: _toggleRecording,
-                          ),
-                        // Nút Gửi
-                        if (_textController.text.trim().isNotEmpty)
-                          IconButton(
-                            icon: Icon(
-                              Icons.send_rounded,
-                              color: AppColors.accent,
-                            ),
-                            onPressed: _sendMessage,
-                          ),
-                        // Loading khi đang transcribe
-                        if (_isTranscribing)
-                          Padding(
-                            padding: EdgeInsets.only(right: 12.w),
-                            child: SizedBox(
-                              width: 20.w,
-                              height: 20.w,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.accent,
-                              ),
-                            ),
-                          ),
+                        IconButton(
+                          tooltip: 'Gửi tin nhắn',
+                          onPressed:
+                              chatState.isLoading ||
+                                  _textController.text.trim().isEmpty
+                              ? null
+                              : _sendMessage,
+                          icon: chatState.isLoading
+                              ? SizedBox(
+                                  width: 20.w,
+                                  height: 20.w,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.accent,
+                                  ),
+                                )
+                              : const Icon(Icons.send_rounded),
+                          color: AppColors.accent,
+                        ),
                       ],
                     ),
                   ),

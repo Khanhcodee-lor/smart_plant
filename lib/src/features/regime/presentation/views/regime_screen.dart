@@ -40,6 +40,7 @@ class RegimeScreen extends BaseView {
 
     return SizedBox.expand(
       child: AppRefreshScrollView(
+        padding: EdgeInsets.only(bottom: 84.h),
         onRefresh: () async {
           ref.invalidate(plantControllerProvider);
           ref.invalidate(regimeRealtimeDataProvider(plantId));
@@ -53,9 +54,9 @@ class RegimeScreen extends BaseView {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const HeaderRegime(),
-            SizedBox(height: 18.h),
+            SizedBox(height: 22.h),
             SensorStatus(plantId: plantId),
-            SizedBox(height: 12.h),
+            SizedBox(height: 16.h),
             PumpControlCard(plantId: plantId),
           ],
         ),

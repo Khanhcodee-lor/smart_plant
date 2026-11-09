@@ -17,15 +17,16 @@ class PumpControlCard extends ConsumerWidget {
     final pump = realtimeAsyncValue.asData?.value.pump;
 
     return Container(
-      padding: EdgeInsets.all(16.w),
+      padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
-        color: AppColors.background.withOpacity(0.88),
-        borderRadius: BorderRadius.circular(16.r),
+        color: Colors.white.withOpacity(0.88),
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: Colors.white.withOpacity(0.8)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: AppColors.primary.withOpacity(0.035),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -35,30 +36,43 @@ class PumpControlCard extends ConsumerWidget {
           Row(
             children: [
               Container(
-                width: 38.w,
-                height: 38.w,
+                width: 42.w,
+                height: 42.w,
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12.r),
+                  color: const Color(0xFFE4F7F3),
+                  borderRadius: BorderRadius.circular(15.r),
                 ),
                 child: Icon(
                   Icons.water_drop_outlined,
                   color: AppColors.accent,
-                  size: 20.sp,
+                  size: 21.sp,
                 ),
               ),
-              SizedBox(width: 12.w),
+              SizedBox(width: 11.w),
               Expanded(
-                child: "Điều khiển bơm".h1Custom(
-                  size: 16.sp,
-                  color: AppColors.textMain,
-                  fontweight: FontWeight.w600,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    "Điều khiển bơm".h1Custom(
+                      size: 15.sp,
+                      color: AppColors.textMain,
+                      fontweight: FontWeight.w700,
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      'Quản lý chế độ tưới',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11.sp,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               _PumpStatusChip(label: pump?.displayLabel ?? 'Đang tải'),
             ],
           ),
-          SizedBox(height: 16.h),
+          SizedBox(height: 15.h),
           Row(
             children: [
               Expanded(
@@ -81,6 +95,7 @@ class PumpControlCard extends ConsumerWidget {
                   label: 'Tắt thủ công',
                   icon: Icons.power_settings_new,
                   backgroundColor: AppColors.error,
+                  isOutlined: true,
                   isLoading: inFlightAction == PumpControlAction.manualOff,
                   isDisabled: inFlightAction != null,
                   onPressed: () => _handlePumpAction(
@@ -151,6 +166,7 @@ class _PumpActionButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.backgroundColor,
+    this.isOutlined = false,
     required this.isLoading,
     required this.isDisabled,
     required this.onPressed,
@@ -159,6 +175,7 @@ class _PumpActionButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color backgroundColor;
+  final bool isOutlined;
   final bool isLoading;
   final bool isDisabled;
   final VoidCallback onPressed;
@@ -166,27 +183,36 @@ class _PumpActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 46.h,
+      height: 48.h,
       child: ElevatedButton.icon(
         onPressed: isDisabled ? null : onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: Colors.white,
+          backgroundColor: isOutlined
+              ? Colors.white.withOpacity(0.72)
+              : backgroundColor,
+          foregroundColor: isOutlined ? backgroundColor : Colors.white,
+          side: BorderSide(
+            color: isOutlined
+                ? backgroundColor.withOpacity(0.3)
+                : Colors.transparent,
+          ),
           disabledBackgroundColor: AppColors.disabled,
-          disabledForegroundColor: Colors.white,
+          disabledForegroundColor: isOutlined
+              ? backgroundColor
+              : Colors.white,
           elevation: 0,
           padding: EdgeInsets.symmetric(horizontal: 10.w),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.r),
+            borderRadius: BorderRadius.circular(14.r),
           ),
         ),
         icon: isLoading
             ? SizedBox(
                 width: 18.w,
                 height: 18.w,
-                child: const CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   strokeWidth: 2.2,
-                  color: Colors.white,
+                  color: isOutlined ? backgroundColor : Colors.white,
                 ),
               )
             : Icon(icon, size: 19.sp),
@@ -194,7 +220,7 @@ class _PumpActionButton extends StatelessWidget {
           fit: BoxFit.scaleDown,
           child: label.bodyCustom(
             size: 13.sp,
-            color: Colors.white,
+            color: isOutlined ? backgroundColor : Colors.white,
             fontWeight: FontWeight.w600,
           ),
         ),

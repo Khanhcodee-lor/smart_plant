@@ -4,6 +4,7 @@ import 'package:app_iot/src/features/disease_detection/presentation/controllers/
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -15,151 +16,185 @@ class NotificationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final plantsAsync = ref.watch(plantControllerProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Thông báo'),
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.textMain,
-        elevation: 0,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          transform: const GradientRotation(0.3),
+          tileMode: TileMode.clamp,
+          stops: const [0.0, 0.7],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(
+              AppColors.accentSecond.withOpacity(0.09),
+              AppColors.background,
+            ),
+            Color.alphaBlend(
+              AppColors.backgroundGreen.withOpacity(0.8),
+              AppColors.background,
+            ),
+          ],
+        ),
       ),
-      body: SafeArea(
-        top: false,
-        child: plantsAsync.when(
-          data: (plants) {
-            final notifications = _notificationsFromPlants(plants, ref);
-            if (notifications.isEmpty) {
-              return const _EmptyNotifications();
-            }
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Thông báo'),
+          backgroundColor: Colors.transparent,
+          foregroundColor: AppColors.textMain,
+          iconTheme: const IconThemeData(color: AppColors.textMain),
+          titleTextStyle: TextStyle(
+            color: AppColors.textMain,
+            fontSize: 18.sp,
+            fontWeight: FontWeight.w600,
+          ),
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          centerTitle: true,
+          systemOverlayStyle: SystemUiOverlayStyle.dark.copyWith(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+          ),
+        ),
+        body: SafeArea(
+          top: false,
+          child: plantsAsync.when(
+            data: (plants) {
+              final notifications = _notificationsFromPlants(plants, ref);
+              if (notifications.isEmpty) {
+                return const _EmptyNotifications();
+              }
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 14.h),
-                  child: Text(
-                    'Kết quả nhận diện được đồng bộ từ Firebase',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13.sp,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 14.h),
+                    child: Text(
+                      'Kết quả nhận diện được đồng bộ từ Firebase',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13.sp,
+                      ),
                     ),
                   ),
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 24.h),
-                    itemCount: notifications.length,
-                    separatorBuilder: (_, _) => SizedBox(height: 10.h),
-                    itemBuilder: (context, index) {
-                      final notification = notifications[index];
-                      final healthy = isHealthyDisease(
-                        notification.detection.diseaseClass,
-                      );
-                      final color = healthy
-                          ? AppColors.success
-                          : AppColors.error;
+                  Expanded(
+                    child: ListView.separated(
+                      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 24.h),
+                      itemCount: notifications.length,
+                      separatorBuilder: (_, _) => SizedBox(height: 10.h),
+                      itemBuilder: (context, index) {
+                        final notification = notifications[index];
+                        final healthy = isHealthyDisease(
+                          notification.detection.diseaseClass,
+                        );
+                        final color = healthy
+                            ? AppColors.success
+                            : AppColors.error;
 
-                      return Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18.r),
-                        child: InkWell(
+                        return Material(
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(18.r),
-                          onTap: () => context.pushNamed(
-                            'plant_detail',
-                            pathParameters: {'id': notification.plant.id},
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(15.r),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 44.w,
-                                  height: 44.w,
-                                  decoration: BoxDecoration(
-                                    color: color.withOpacity(0.11),
-                                    shape: BoxShape.circle,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18.r),
+                            onTap: () => context.pushNamed(
+                              'plant_detail',
+                              pathParameters: {'id': notification.plant.id},
+                            ),
+                            child: Padding(
+                              padding: EdgeInsets.all(15.r),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 44.w,
+                                    height: 44.w,
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.11),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      healthy
+                                          ? Icons.eco_outlined
+                                          : Icons.warning_amber_rounded,
+                                      color: color,
+                                      size: 23.sp,
+                                    ),
                                   ),
-                                  child: Icon(
-                                    healthy
-                                        ? Icons.eco_outlined
-                                        : Icons.warning_amber_rounded,
-                                    color: color,
-                                    size: 23.sp,
-                                  ),
-                                ),
-                                SizedBox(width: 12.w),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        notification.plant.name,
-                                        style: TextStyle(
-                                          color: AppColors.textMain,
-                                          fontSize: 14.sp,
-                                          fontWeight: FontWeight.w700,
+                                  SizedBox(width: 12.w),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          notification.plant.name,
+                                          style: TextStyle(
+                                            color: AppColors.textMain,
+                                            fontSize: 14.sp,
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
-                                      ),
-                                      SizedBox(height: 4.h),
-                                      Text(
-                                        translateDiseaseLabel(
-                                          notification.detection.diseaseClass,
-                                        ),
-                                        style: TextStyle(
-                                          color: color,
-                                          fontSize: 14.sp,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      if (notification.detection.confidence > 0) ...[
                                         SizedBox(height: 4.h),
                                         Text(
-                                          'Độ tin cậy: ${(notification.detection.confidence * 100).toStringAsFixed(1)}%',
+                                          translateDiseaseLabel(
+                                            notification.detection.diseaseClass,
+                                          ),
                                           style: TextStyle(
-                                            color: AppColors.textSecondary,
-                                            fontSize: 12.sp,
+                                            color: color,
+                                            fontSize: 14.sp,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
-                                      ],
-                                      if (notification.detection.time
-                                          .trim()
-                                          .isNotEmpty) ...[
-                                        SizedBox(height: 5.h),
-                                        Text(
-                                          notification.detection.time,
-                                          style: TextStyle(
-                                            color: AppColors.disabledText,
-                                            fontSize: 11.sp,
+                                        if (notification.detection.confidence > 0) ...[
+                                          SizedBox(height: 4.h),
+                                          Text(
+                                            'Độ tin cậy: ${(notification.detection.confidence * 100).toStringAsFixed(1)}%',
+                                            style: TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 12.sp,
+                                            ),
                                           ),
-                                        ),
+                                        ],
+                                        if (notification.detection.time
+                                            .trim()
+                                            .isNotEmpty) ...[
+                                          SizedBox(height: 5.h),
+                                          Text(
+                                            notification.detection.time,
+                                            style: TextStyle(
+                                              color: AppColors.disabledText,
+                                              fontSize: 11.sp,
+                                            ),
+                                          ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
-                                ),
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: AppColors.disabledText,
-                                  size: 22.sp,
-                                ),
-                              ],
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    color: AppColors.disabledText,
+                                    size: 22.sp,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
-          loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          ),
-          error: (error, _) => _EmptyNotifications(
-            message: 'Không tải được thông báo: $error',
-            icon: Icons.cloud_off_outlined,
+                ],
+              );
+            },
+            loading: () => const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+            error: (error, _) => _EmptyNotifications(
+              message: 'Không tải được thông báo: $error',
+              icon: Icons.cloud_off_outlined,
+            ),
           ),
         ),
       ),
