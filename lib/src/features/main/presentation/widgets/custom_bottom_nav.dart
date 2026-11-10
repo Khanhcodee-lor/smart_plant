@@ -134,13 +134,7 @@ class CustomBottomNav extends ConsumerWidget {
                 showModalBottomSheet(
                   context: context,
                   isScrollControlled: true,
-                  builder: (context) => Padding(
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(context).viewInsets.bottom,
-                      //Nó trả về chiều cao phần UI bị che bởi hệ thống
-                    ),
-                    child: AiChatbotSheet(),
-                  ),
+                  builder: (context) => AiChatbotSheet(),
                 );
               },
               borderRadius: BorderRadius.circular(35.r),

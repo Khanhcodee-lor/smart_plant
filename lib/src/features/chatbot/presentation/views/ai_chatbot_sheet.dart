@@ -85,7 +85,9 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final sheetHeight = MediaQuery.of(context).size.height * 0.92;
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardHeight = mediaQuery.viewInsets.bottom;
+    final availableHeight = mediaQuery.size.height - keyboardHeight;
     ref.listen<ChatState>(chatbotControllerProvider, (previous, next) {
       if (previous?.messages.length != next.messages.length ||
           previous?.isLoading != next.isLoading) {
@@ -94,8 +96,10 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
     });
     final chatState = ref.watch(chatbotControllerProvider);
 
-    return Container(
-      height: sheetHeight,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      height: availableHeight * 0.92,
+      margin: EdgeInsets.only(bottom: keyboardHeight),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.only(
@@ -272,7 +276,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
               20.w,
               10.h,
               20.w,
-              MediaQuery.of(context).padding.bottom + 10.h,
+              (keyboardHeight > 0 ? 0 : mediaQuery.padding.bottom) + 10.h,
             ),
             child: Column(
               children: [
