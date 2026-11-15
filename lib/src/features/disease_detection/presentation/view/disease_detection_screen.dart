@@ -10,6 +10,7 @@ import 'package:app_iot/src/features/disease_detection/presentation/controllers/
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/capture_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/current_disease_card_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_feedback_snack_bar.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
@@ -1246,7 +1247,7 @@ List<DetectionItem> _uniqueDetectionsByDisease(List<DetectionItem> items) {
   final uniqueItems = <String, DetectionItem>{};
 
   for (final item in items) {
-    final key = item.diseaseClass.trim().toLowerCase();
+    final key = translateDiseaseLabel(item.diseaseClass).trim().toLowerCase();
     if (key.isEmpty) {
       continue;
     }
