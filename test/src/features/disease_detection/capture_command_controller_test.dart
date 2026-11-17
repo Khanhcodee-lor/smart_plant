@@ -44,7 +44,10 @@ class _FakeRealtimeDatabaseService implements FirebaseRealtimeDatabaseService {
   final sets = <_DatabaseSet>[];
 
   @override
-  Future<dynamic> getData(String path) async => null;
+  Future<dynamic> getData(
+    String path, {
+    Map<String, String> queryParameters = const <String, String>{},
+  }) async => null;
 
   @override
   Future<void> setData(String path, Object? data) async {

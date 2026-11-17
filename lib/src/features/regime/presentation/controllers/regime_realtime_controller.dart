@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_iot/src/core/services/firebase/firebase_realtime_database_service.dart';
+import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class RegimeRealtimeData {
@@ -81,14 +82,17 @@ class RegimeRealtimeData {
         root['water_level'],
       ]),
       pump: PumpControlState.fromDatabase(
-        _firstNonNull([control['pump'], root['pump']]),
+        _firstNonNull([sensor['pump'], root['pump'], control['pump']]),
         fallbackEnabled: _firstNonNull([
           sensor['pump_on'],
           root['pump_on'],
         ]),
       ),
       updatedAt:
-          _firstNonEmptyString([
+          _firstTimestampString([
+            sensor['timestamp'],
+            sensorsLatest['timestamp'],
+            root['timestamp'],
             sensor['updated_at'],
             sensorsLatest['updated_at'],
             sensorsLatest['time'],
@@ -115,6 +119,8 @@ class PumpControlState {
   bool get isAutomatic => mode == 'auto' || command == 'auto';
   bool get isManualOff =>
       mode == 'manual' && (command == 'off' || enabled == false);
+  bool get isManualOn =>
+      mode == 'manual' && (command == 'on' || (command.isEmpty && enabled));
 
   String get displayLabel {
     if (isAutomatic) {
@@ -122,6 +128,9 @@ class PumpControlState {
     }
     if (isManualOff) {
       return 'Tắt thủ công';
+    }
+    if (isManualOn) {
+      return 'Bật thủ công';
     }
     if (enabled) {
       return 'Đang bật';
@@ -147,7 +156,7 @@ class PumpControlState {
   }
 }
 
-enum PumpControlAction { automatic, manualOff }
+enum PumpControlAction { automatic, manualOn, manualOff }
 
 class PumpControlService {
   const PumpControlService(this._database);
@@ -171,6 +180,17 @@ class PumpControlService {
       buildPumpControlPaths(plantId),
       buildPumpControlPayload(
         action: PumpControlAction.manualOff,
+        now: DateTime.now().toUtc(),
+      ),
+    );
+  }
+
+  Future<void> turnOnManual(String plantId) async {
+    await _updateKnownRealtimePaths(
+      _database,
+      buildPumpControlPaths(plantId),
+      buildPumpControlPayload(
+        action: PumpControlAction.manualOn,
         now: DateTime.now().toUtc(),
       ),
     );
@@ -200,13 +220,30 @@ List<String> _regimeRealtimeDataPaths(String plantId) {
   ];
 }
 
+List<String> buildRegimeSensorHistoryPaths(String plantId) {
+  final normalizedPlantId = plantId.trim();
+  final sensorNodeId = _sensorNodeByPlantId[normalizedPlantId];
+  return [
+    if (sensorNodeId != null) '$sensorNodeId/history',
+    'plants/$normalizedPlantId/sensors/history',
+    'plant/$normalizedPlantId/sensors/history',
+  ];
+}
+
 String buildPumpControlPath(String plantId) {
   return buildPumpControlPaths(plantId).first;
 }
 
 List<String> buildPumpControlPaths(String plantId) {
+  final normalizedPlantId = plantId.trim();
+  final sensorNodeId = _sensorNodeByPlantId[normalizedPlantId];
+  if (sensorNodeId != null) {
+    return ['$sensorNodeId/sensor/pump'];
+  }
+
   return [
-    for (final path in buildRegimePlantPaths(plantId)) '$path/control/pump',
+    for (final path in buildRegimePlantPaths(normalizedPlantId))
+      '$path/control/pump',
   ];
 }
 
@@ -223,6 +260,15 @@ Map<String, dynamic> buildPumpControlPayload({
       'command': 'auto',
       'enabled': true,
       'manual_override': false,
+      'updated_at': updatedAt,
+      'updated_ts': updatedTs,
+      'updated_by': 'app',
+    },
+    PumpControlAction.manualOn => {
+      'mode': 'manual',
+      'command': 'on',
+      'enabled': true,
+      'manual_override': true,
       'updated_at': updatedAt,
       'updated_ts': updatedTs,
       'updated_by': 'app',
@@ -246,6 +292,17 @@ final regimeRealtimeDataProvider = StreamProvider.autoDispose
       while (true) {
         final value = await _getFirstRealtimePlantValue(database, plantId);
         yield RegimeRealtimeData.fromDatabase(value);
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
+    });
+
+final regimeSensorHistoryProvider = StreamProvider.autoDispose
+    .family<List<SensorHistoryItem>, String>((ref, plantId) async* {
+      final database = ref.watch(firebaseRealtimeDatabaseServiceProvider);
+
+      while (true) {
+        final history = await _getFirstRealtimeSensorHistory(database, plantId);
+        yield history;
         await Future<void>.delayed(const Duration(seconds: 3));
       }
     });
@@ -329,6 +386,33 @@ String? _firstNonEmptyString(List<dynamic> candidates) {
   return null;
 }
 
+String? _firstTimestampString(List<dynamic> candidates) {
+  for (final candidate in candidates) {
+    if (candidate == null) {
+      continue;
+    }
+
+    final text = candidate.toString().trim();
+    if (text.isEmpty) {
+      continue;
+    }
+
+    final numeric = candidate is num
+        ? candidate.toDouble()
+        : double.tryParse(text);
+    if (numeric != null && numeric.isFinite) {
+      final milliseconds = numeric > 1000000000000 ? numeric : numeric * 1000;
+      return DateTime.fromMillisecondsSinceEpoch(
+        milliseconds.round(),
+        isUtc: true,
+      ).toLocal().toIso8601String();
+    }
+
+    return text;
+  }
+  return null;
+}
+
 Future<dynamic> _getFirstRealtimePlantValue(
   FirebaseRealtimeDatabaseService database,
   String plantId,
@@ -364,6 +448,38 @@ Future<dynamic> _getFirstRealtimePlantValue(
     Error.throwWithStackTrace(firstError, firstStackTrace!);
   }
   return null;
+}
+
+Future<List<SensorHistoryItem>> _getFirstRealtimeSensorHistory(
+  FirebaseRealtimeDatabaseService database,
+  String plantId,
+) async {
+  Object? firstError;
+  StackTrace? firstStackTrace;
+
+  for (final path in buildRegimeSensorHistoryPaths(plantId)) {
+    try {
+      final value = await database.getData(
+        path,
+        queryParameters: const {
+          'orderBy': '"\$key"',
+          'limitToLast': '100',
+        },
+      );
+      final history = parseSensorHistory([value]);
+      if (history.isNotEmpty) {
+        return history;
+      }
+    } catch (error, stackTrace) {
+      firstError ??= error;
+      firstStackTrace ??= stackTrace;
+    }
+  }
+
+  if (firstError != null) {
+    Error.throwWithStackTrace(firstError, firstStackTrace!);
+  }
+  return const <SensorHistoryItem>[];
 }
 
 Map<dynamic, dynamic> _mergeRealtimeMaps(

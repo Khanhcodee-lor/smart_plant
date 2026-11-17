@@ -1,5 +1,6 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
+import 'package:app_iot/src/core/constants/app_text_styles.dart';
 import 'package:app_iot/src/features/chatbot/presentation/controllers/chatbot_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,11 +9,13 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 class AiChatbotSheet extends ConsumerStatefulWidget {
   final String? initialMessage;
   final bool autoSendInitialMessage;
+  final Map<String, dynamic>? initialContext;
 
   const AiChatbotSheet({
     super.key,
     this.initialMessage,
     this.autoSendInitialMessage = false,
+    this.initialContext,
   });
 
   @override
@@ -44,7 +47,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
 
         ref
             .read(chatbotControllerProvider.notifier)
-            .sendMessage(initialMessage);
+            .sendMessage(initialMessage, context: widget.initialContext);
         _scrollToBottom();
       });
     } else {
@@ -66,11 +69,110 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
     });
   }
 
+  Widget _buildMessageContent(String text, {required bool isUser}) {
+    if (isUser) {
+      return Text(
+        text,
+        style: AppTextStyles.body.copyWith(
+          fontSize: 12.5.sp,
+          height: 1.4,
+          color: Colors.white,
+        ),
+      );
+    }
+
+    final blocks = <Widget>[];
+    final paragraphLines = <String>[];
+    final bodyStyle = AppTextStyles.body.copyWith(
+      fontSize: 12.5.sp,
+      height: 1.48,
+      color: AppColors.textMain,
+    );
+
+    void addParagraph() {
+      final paragraph = paragraphLines.join(' ').trim();
+      if (paragraph.isEmpty) return;
+      if (blocks.isNotEmpty) blocks.add(SizedBox(height: 5.h));
+      blocks.add(Text(paragraph, style: bodyStyle));
+      paragraphLines.clear();
+    }
+
+    for (final sourceLine in text.split('\n')) {
+      final line = sourceLine.trim();
+      if (line.isEmpty) {
+        addParagraph();
+        continue;
+      }
+
+      final heading = RegExp(r'^\d+[.)]\s*(.+)$').firstMatch(line);
+      if (heading != null) {
+        addParagraph();
+        if (blocks.isNotEmpty) blocks.add(SizedBox(height: 7.h));
+        blocks.add(
+          Text(
+            heading.group(1)!.trim(),
+            style: AppTextStyles.body.copyWith(
+              fontSize: 12.5.sp,
+              height: 1.35,
+              fontWeight: FontWeight.w700,
+              color: AppColors.accent,
+            ),
+          ),
+        );
+        blocks.add(SizedBox(height: 3.h));
+        continue;
+      }
+
+      final bullet = RegExp(r'^[•*-]\s*(.+)$').firstMatch(line);
+      if (bullet != null) {
+        addParagraph();
+        if (blocks.isNotEmpty) blocks.add(SizedBox(height: 3.h));
+        blocks.add(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(top: 1.h, right: 7.w),
+                child: Icon(
+                  Icons.circle,
+                  size: 5.sp,
+                  color: AppColors.accent,
+                ),
+              ),
+              Expanded(child: Text(bullet.group(1)!.trim(), style: bodyStyle)),
+            ],
+          ),
+        );
+        continue;
+      }
+
+      paragraphLines.add(line);
+    }
+    addParagraph();
+
+    return SelectionArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: blocks,
+      ),
+    );
+  }
+
   void _sendMessage() {
     final text = _textController.text;
     if (text.trim().isNotEmpty &&
         !ref.read(chatbotControllerProvider).isLoading) {
-      ref.read(chatbotControllerProvider.notifier).sendMessage(text);
+      final hasUserMessages = ref
+          .read(chatbotControllerProvider)
+          .messages
+          .any((message) => message.isUser);
+      ref
+          .read(chatbotControllerProvider.notifier)
+          .sendMessage(
+            text,
+            context: hasUserMessages ? null : widget.initialContext,
+          );
       _textController.clear();
       _scrollToBottom();
     }
@@ -235,19 +337,27 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                     children: [
                       Container(
                         constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
+                          maxWidth: MediaQuery.of(context).size.width *
+                              (isUser ? 0.82 : 0.94),
                         ),
                         padding: EdgeInsets.symmetric(
                           horizontal: 16.w,
                           vertical: 12.h,
                         ),
                         decoration: BoxDecoration(
-                          color: isUser ? AppColors.primary : Colors.white,
+                          color: isUser
+                              ? AppColors.primary
+                              : const Color(0xFFF1F8F6),
+                          border: isUser
+                              ? null
+                              : Border.all(
+                                  color: AppColors.accent.withOpacity(0.14),
+                                ),
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(16.r),
                             topRight: Radius.circular(16.r),
-                            bottomLeft: Radius.circular(isUser ? 16.r : 0),
-                            bottomRight: Radius.circular(isUser ? 0 : 16.r),
+                            bottomLeft: Radius.circular(isUser ? 16.r : 5.r),
+                            bottomRight: Radius.circular(isUser ? 5.r : 16.r),
                           ),
                           boxShadow: [
                             if (!isUser)
@@ -258,10 +368,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                               ),
                           ],
                         ),
-                        child: msg.text.bodyCustom(
-                          size: 13.sp,
-                          color: isUser ? Colors.white : AppColors.textMain,
-                        ),
+                        child: _buildMessageContent(msg.text, isUser: isUser),
                       ),
                     ],
                   ),

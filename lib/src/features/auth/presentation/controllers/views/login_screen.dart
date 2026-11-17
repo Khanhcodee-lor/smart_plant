@@ -152,13 +152,13 @@ class LoginScreen extends BaseView {
                         text: TextSpan(
                           children: [
                             TextSpan(
-                              text: "Plant",
+                              text: "My",
                               style: AppTextStyles.h1Bold.copyWith(
                                 fontSize: 20.sp,
                               ),
                             ),
                             TextSpan(
-                              text: "Smart",
+                              text: "Plant",
                               style: AppTextStyles.h1Light.copyWith(
                                 fontSize: 20.sp,
                               ),
@@ -179,35 +179,20 @@ class LoginScreen extends BaseView {
                   // --- NÚT BẤM ---
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 30.w),
-                    child: Column(
-                      children: [
-                        AppSlideIn(
-                          delay: const Duration(milliseconds: 550),
-                          offset: const Offset(0, 30),
-                          child: _buildTranslucentButton(
-                            onTap: () {},
-                            backgroundColor: AppColors.accent,
-                            textColor: AppColors.background,
-                            text: "Login",
-                          ),
-                        ),
-                        SizedBox(height: 18.h),
-                        AppSlideIn(
-                          delay: const Duration(milliseconds: 650),
-                          offset: const Offset(0, 30),
-                          child: isLoading
-                              ? const Center(
-                                  child: CircularProgressIndicator(),
-                                ) // Hiện vòng quay nếu đang load
-                              : _buildGoogleButton(
-                                  onTap: () {
-                                    ref
-                                        .read(authControllerProvider.notifier)
-                                        .loginWithGoogle();
-                                  },
-                                ),
-                        ),
-                      ],
+                    child: AppSlideIn(
+                      delay: const Duration(milliseconds: 550),
+                      offset: const Offset(0, 30),
+                      child: isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(),
+                            ) // Hiện vòng quay nếu đang load
+                          : _buildGoogleButton(
+                              onTap: () {
+                                ref
+                                    .read(authControllerProvider.notifier)
+                                    .loginWithGoogle();
+                              },
+                            ),
                     ),
                   ),
 
@@ -218,30 +203,6 @@ class LoginScreen extends BaseView {
           ),
         ),
       ],
-    );
-  }
-
-  /// Widget xây dựng nút bấm dạng trong suốt (Login/Signup)
-  Widget _buildTranslucentButton({
-    required String text,
-    required Color backgroundColor,
-    required Color textColor,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      height: 52.h, // Chiều cao cố định theo thiết kế
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(30.r), // Bo tròn kiểu pill-shape
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(30.r),
-          child: Center(child: text.bodyCustom(color: textColor)),
-        ),
-      ),
     );
   }
 

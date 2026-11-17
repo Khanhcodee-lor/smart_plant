@@ -51,7 +51,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       splitScreenMode: true,
       builder: (context, child) {
         return MaterialApp.router(
-          title: 'IoT Plant Doctor',
+          title: 'MyPlant',
           debugShowCheckedModeBanner: false,
           routerConfig: goRouter,
           scaffoldMessengerKey: rootScaffoldMessengerKey,

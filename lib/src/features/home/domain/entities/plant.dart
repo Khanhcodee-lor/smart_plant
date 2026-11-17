@@ -2,6 +2,8 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'plant.freezed.dart';
 
+const _maxSensorHistoryItems = 100;
+
 @freezed
 class DetectionItem with _$DetectionItem {
   const factory DetectionItem({
@@ -289,17 +291,12 @@ class Plant with _$Plant {
       normalizedData['soil_moisture'],
     ]);
 
-    final sensorHistoryNodes = _collectMapEntries([
+    final sensorHistoryList = parseSensorHistory([
       sensors['history'],
       normalizedData['sensorHistory'],
       normalizedData['sensorsHistory'],
     ]);
-    final sensorHistoryList = sensorHistoryNodes
-        .map(_buildSensorHistoryItem)
-        .whereType<SensorHistoryItem>()
-        .toList();
 
-    sensorHistoryList.sort((a, b) => a.time.compareTo(b.time));
     historyList.sort((a, b) => b.time.compareTo(a.time));
 
     return Plant(
@@ -442,6 +439,19 @@ List<Map<dynamic, dynamic>> _collectMapEntries(List<dynamic> candidates) {
   }
 
   return items;
+}
+
+List<SensorHistoryItem> parseSensorHistory(List<dynamic> candidates) {
+  final sensorHistory = _collectMapEntries(candidates)
+      .map(_buildSensorHistoryItem)
+      .whereType<SensorHistoryItem>()
+      .toList();
+
+  sensorHistory.sort((a, b) => a.time.compareTo(b.time));
+  if (sensorHistory.length <= _maxSensorHistoryItems) {
+    return sensorHistory;
+  }
+  return sensorHistory.sublist(sensorHistory.length - _maxSensorHistoryItems);
 }
 
 DetectionItem? _buildDetectionItem(Map<dynamic, dynamic> value) {

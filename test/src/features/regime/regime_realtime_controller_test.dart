@@ -47,15 +47,12 @@ void main() {
     expect(data.pump.enabled, isTrue);
   });
 
-  test('build pump control path under realtime plant node', () {
-    expect(buildPumpControlPath('tomato_001'), 'plants/tomato_001/control/pump');
+  test('build pump control path under the connected sensor node', () {
+    expect(buildPumpControlPath('tomato_001'), 'node1/sensor/pump');
   });
 
-  test('build pump control paths prefer the current root', () {
-    expect(buildPumpControlPaths('tomato_001'), [
-      'plants/tomato_001/control/pump',
-      'plant/tomato_001/control/pump',
-    ]);
+  test('build pump control paths use the connected sensor node', () {
+    expect(buildPumpControlPaths('tomato_001'), ['node1/sensor/pump']);
   });
 
   test('build automatic pump payload', () {

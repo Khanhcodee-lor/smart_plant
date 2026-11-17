@@ -52,6 +52,9 @@ class SoilMoistureDetailScreen extends BaseView {
   Widget buildBody(BuildContext context, WidgetRef ref) {
     final plantAsyncValue = ref.watch(plantControllerProvider);
     final realtimeAsyncValue = ref.watch(regimeRealtimeDataProvider(plantId));
+    final sensorHistoryAsyncValue = ref.watch(
+      regimeSensorHistoryProvider(plantId),
+    );
 
     return SizedBox.expand(
       child: AppRefreshScrollView(
@@ -59,9 +62,14 @@ class SoilMoistureDetailScreen extends BaseView {
         onRefresh: () async {
           ref.invalidate(plantControllerProvider);
           ref.invalidate(regimeRealtimeDataProvider(plantId));
+          ref.invalidate(regimeSensorHistoryProvider(plantId));
 
           await Future.wait([
             ref.read(plantControllerProvider.future),
+            ref
+                .read(regimeSensorHistoryProvider(plantId).future)
+                .then<void>((_) {})
+                .catchError((_) {}),
             ref
                 .read(regimeRealtimeDataProvider(plantId).future)
                 .then<void>((_) {})
@@ -84,7 +92,11 @@ class SoilMoistureDetailScreen extends BaseView {
             final currentMoisture =
                 realtimeAsyncValue.asData?.value.soilMoisture ??
                 plant.soilMoisture;
-            final sensorHistory = plant.sensorHistory;
+            final remoteSensorHistory = sensorHistoryAsyncValue.asData?.value;
+            final sensorHistory = remoteSensorHistory != null &&
+                    remoteSensorHistory.isNotEmpty
+                ? remoteSensorHistory
+                : plant.sensorHistory;
             final List<FlSpot> chartSpots = [];
             final List<String> xLabels = [];
 

@@ -7,14 +7,16 @@ import 'package:app_iot/src/features/disease_detection/presentation/controllers/
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_history_cleanup_controller.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/disease_image_upload_controller.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/plant_detections_provider.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/ai_disease_assessment_card.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/capture_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/current_disease_card_widget.dart';
-import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_feedback_snack_bar.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_display_utils.dart';
+import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_feedback_snack_bar.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/disease_history_list_widget.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/widgets/latest_snapshot_card_widget.dart';
 import 'package:app_iot/src/features/home/domain/entities/plant.dart';
 import 'package:app_iot/src/features/home/presentation/controllers/plant_controller.dart';
+import 'package:app_iot/src/features/regime/presentation/controllers/regime_realtime_controller.dart';
 import 'package:app_iot/src/shared/widgets/app_loading_widget.dart';
 import 'package:app_iot/src/shared/widgets/app_refresh_scroll_view.dart';
 import 'package:flutter/material.dart';
@@ -75,6 +77,9 @@ class DiseaseDetectionScreen extends BaseView {
   Widget buildBody(BuildContext context, WidgetRef ref) {
     final plantAsyncValue = ref.watch(plantControllerProvider);
     final detectionsAsyncValue = ref.watch(plantDetectionsProvider(plantId));
+    final realtimeSensorsAsyncValue = ref.watch(
+      regimeRealtimeDataProvider(plantId),
+    );
     final uploadedImageResult = ref.watch(
       diseaseImageUploadLatestResultProvider(plantId),
     );
@@ -102,10 +107,15 @@ class DiseaseDetectionScreen extends BaseView {
               onRefresh: () async {
                 ref.invalidate(plantControllerProvider);
                 ref.invalidate(plantDetectionsProvider(plantId));
+                ref.invalidate(regimeRealtimeDataProvider(plantId));
 
                 await Future.wait([
                   ref.read(plantControllerProvider.future),
                   ref.read(plantDetectionsProvider(plantId).future),
+                  ref
+                      .read(regimeRealtimeDataProvider(plantId).future)
+                      .then<void>((_) {})
+                      .catchError((_) {}),
                 ]);
               },
               child: displayPlantAsyncValue.when(
@@ -204,6 +214,32 @@ class DiseaseDetectionScreen extends BaseView {
                   final uniqueHistoryDetections = _uniqueDetectionsByTime(
                     history,
                   );
+                  final allDetectionsNewestFirst = _uniqueDetectionsByTime([
+                    if (latestDetection != null) latestDetection,
+                    ...latestDetections,
+                    ...history,
+                  ]);
+                  final currentDetectionTime = latestDetection?.time.trim();
+                  final currentDetectionDate = _tryParseDetectionTime(
+                    currentDetectionTime ?? '',
+                  );
+                  final previousDetections = allDetectionsNewestFirst
+                      .where((item) {
+                        if (latestDetection == null) return true;
+                        if (currentDetectionTime?.isNotEmpty ?? false) {
+                          final itemDate = _tryParseDetectionTime(item.time);
+                          if (currentDetectionDate != null &&
+                              itemDate != null) {
+                            return !itemDate.isAtSameMomentAs(
+                              currentDetectionDate,
+                            );
+                          }
+                          return item.time.trim() != currentDetectionTime;
+                        }
+                        return item != latestDetection;
+                      })
+                      .take(5)
+                      .toList(growable: false);
 
                   return SingleChildScrollView(
                     child: Column(
@@ -217,6 +253,13 @@ class DiseaseDetectionScreen extends BaseView {
                         SizedBox(height: 20.h),
                         CurrentDiseaseCardWidget(
                           latestDetection: latestDetection,
+                        ),
+                        SizedBox(height: 12.h),
+                        AiDiseaseAssessmentCard(
+                          plantName: plant.name,
+                          latestDetection: latestDetection,
+                          previousDetections: previousDetections,
+                          sensorData: realtimeSensorsAsyncValue.asData?.value,
                         ),
                         if (uploadedImageResult != null &&
                             !uploadedImageResult.timedOut &&

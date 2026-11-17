@@ -28,8 +28,11 @@ class FirebaseRealtimeDatabaseService {
   final FirebaseAuth _auth;
   final FirebaseApp _app;
 
-  Future<dynamic> getData(String path) async {
-    final uri = await _buildUri(path);
+  Future<dynamic> getData(
+    String path, {
+    Map<String, String> queryParameters = const <String, String>{},
+  }) async {
+    final uri = await _buildUri(path, queryParameters: queryParameters);
     final response = await _client.get(uri);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -109,7 +112,10 @@ class FirebaseRealtimeDatabaseService {
     }
   }
 
-  Future<Uri> _buildUri(String path) async {
+  Future<Uri> _buildUri(
+    String path, {
+    Map<String, String> queryParameters = const <String, String>{},
+  }) async {
     final databaseUrl = _app.options.databaseURL;
     if (databaseUrl == null || databaseUrl.trim().isEmpty) {
       throw const FirebaseRealtimeDatabaseException(
@@ -130,15 +136,14 @@ class FirebaseRealtimeDatabaseService {
         .map(Uri.encodeComponent)
         .join('/');
 
-    var uri = Uri.parse('$normalizedBase/$encodedPath.json');
+    final uri = Uri.parse('$normalizedBase/$encodedPath.json');
     final token = await _auth.currentUser?.getIdToken();
-    if (token != null && token.isNotEmpty) {
-      uri = uri.replace(
-        queryParameters: {...uri.queryParameters, 'auth': token},
-      );
-    }
-
-    return uri;
+    return uri.replace(
+      queryParameters: {
+        ...queryParameters,
+        if (token != null && token.isNotEmpty) 'auth': token,
+      },
+    );
   }
 }
 

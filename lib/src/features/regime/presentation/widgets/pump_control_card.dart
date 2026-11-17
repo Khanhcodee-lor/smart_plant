@@ -73,19 +73,33 @@ class PumpControlCard extends ConsumerWidget {
             ],
           ),
           SizedBox(height: 15.h),
+          _PumpActionButton(
+            label: 'Chế độ tự động',
+            icon: Icons.auto_mode,
+            backgroundColor: AppColors.accent,
+            isLoading: inFlightAction == PumpControlAction.automatic,
+            isDisabled: inFlightAction != null,
+            onPressed: () => _handlePumpAction(
+              context,
+              ref,
+              PumpControlAction.automatic,
+            ),
+          ),
+          SizedBox(height: 10.h),
           Row(
             children: [
               Expanded(
                 child: _PumpActionButton(
-                  label: 'Bơm tự động',
-                  icon: Icons.auto_mode,
+                  label: 'Bật thủ công',
+                  icon: Icons.play_arrow_rounded,
                   backgroundColor: AppColors.accent,
-                  isLoading: inFlightAction == PumpControlAction.automatic,
+                  isOutlined: true,
+                  isLoading: inFlightAction == PumpControlAction.manualOn,
                   isDisabled: inFlightAction != null,
                   onPressed: () => _handlePumpAction(
                     context,
                     ref,
-                    PumpControlAction.automatic,
+                    PumpControlAction.manualOn,
                   ),
                 ),
               ),
@@ -130,6 +144,8 @@ class PumpControlCard extends ConsumerWidget {
       switch (action) {
         case PumpControlAction.automatic:
           await service.setAutomatic(plantId);
+        case PumpControlAction.manualOn:
+          await service.turnOnManual(plantId);
         case PumpControlAction.manualOff:
           await service.turnOffManual(plantId);
       }
@@ -155,8 +171,9 @@ class PumpControlCard extends ConsumerWidget {
 
   String _successMessage(PumpControlAction action) {
     return switch (action) {
-      PumpControlAction.automatic => 'Đã bật chế độ bơm tự động',
-      PumpControlAction.manualOff => 'Đã tắt bơm thủ công',
+      PumpControlAction.automatic => 'Đã gửi lệnh bật chế độ tự động',
+      PumpControlAction.manualOn => 'Đã gửi lệnh bật bơm thủ công',
+      PumpControlAction.manualOff => 'Đã gửi lệnh tắt bơm thủ công',
     };
   }
 }
