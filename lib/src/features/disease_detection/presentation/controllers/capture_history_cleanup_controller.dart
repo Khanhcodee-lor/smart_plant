@@ -29,6 +29,8 @@ class CaptureHistoryCleanupService {
       for (final path in [
         'plants/$normalizedPlantId/plant_captures',
         'plant/$normalizedPlantId/plant_captures',
+        'plants/$normalizedPlantId/deleted_captures',
+        'plant/$normalizedPlantId/deleted_captures',
         'plants/$normalizedPlantId/latest_disease',
         'plant/$normalizedPlantId/latest_disease',
         'plants/$normalizedPlantId/diseaseDetection',

@@ -1,6 +1,6 @@
 {
-    "name": "MyPlant",
-    "short_name": "MyPlant",
+    "name": "My Plant",
+    "short_name": "My Plant",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

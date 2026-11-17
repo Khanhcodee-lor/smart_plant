@@ -1,6 +1,5 @@
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
-import 'package:app_iot/src/core/services/firebase/firebase_realtime_database_service.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
 import 'package:app_iot/src/features/chatbot/presentation/views/ai_chatbot_sheet.dart';
 import 'package:app_iot/src/features/disease_detection/presentation/controllers/capture_command_controller.dart';
@@ -689,56 +688,6 @@ class DiseaseDetectionScreen extends BaseView {
     inFlight.state = true;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final currentDetections =
-          ref.read(plantDetectionsProvider(plantId)).asData?.value;
-      if (currentDetections != null && plantId.isNotEmpty) {
-        final allKeys = <String>{};
-        for (final item in [
-          ...currentDetections.history,
-          ...currentDetections.latestDetections,
-          if (currentDetections.latestDetection != null)
-            currentDetections.latestDetection!,
-        ]) {
-          final docPath = item.sourceDocumentPath.trim();
-          if (docPath.isNotEmpty) {
-            allKeys.add(docPath);
-            final docId = docPath.split('/').last.trim();
-            if (docId.isNotEmpty) allKeys.add(docId);
-          }
-          final time = item.time.trim();
-          if (time.isNotEmpty) allKeys.add(time);
-          final snapshot = item.snapshotUrl.trim();
-          if (snapshot.isNotEmpty) {
-            allKeys.add(snapshot);
-            final match = RegExp(
-              r'(mobile_upload_[0-9]+_[a-f0-9]+|manual_[0-9]+_[a-zA-Z0-9_]+)',
-            ).firstMatch(snapshot);
-            if (match != null) allKeys.add(match.group(1)!);
-          }
-        }
-        if (allKeys.isNotEmpty) {
-          ref
-              .read(deletedCapturesProvider(plantId).notifier)
-              .update((c) => {...c, ...allKeys});
-          final rtdb = ref.read(firebaseRealtimeDatabaseServiceProvider);
-          for (final k in allKeys) {
-            final safeKey = k.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
-            if (safeKey.isNotEmpty) {
-              try {
-                await rtdb.setData(
-                  'plants/$plantId/deleted_captures/$safeKey',
-                  true,
-                );
-                await rtdb.setData(
-                  'plant/$plantId/deleted_captures/$safeKey',
-                  true,
-                );
-              } catch (_) {}
-            }
-          }
-        }
-      }
-
       final result = await ref
           .read(captureHistoryCleanupServiceProvider)
           .deleteAll(plantId);
@@ -748,6 +697,9 @@ class DiseaseDetectionScreen extends BaseView {
 
       ref.read(diseaseImageUploadLatestResultProvider(plantId).notifier).state =
           null;
+      ref
+          .read(deletedCapturesProvider(plantId).notifier)
+          .state = <String>{};
       ref.invalidate(plantDetectionsProvider(plantId));
       ref.invalidate(plantControllerProvider);
 
