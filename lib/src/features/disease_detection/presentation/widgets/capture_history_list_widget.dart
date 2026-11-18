@@ -219,7 +219,8 @@ class _CaptureHistoryDetailSheetState
     final shouldResolveSnapshot =
         snapshotPath.isNotEmpty &&
         !isLocalSnapshotImagePath(snapshotPath) &&
-        !isInlineSnapshotImageData(snapshotPath);
+        !isInlineSnapshotImageData(snapshotPath) &&
+        !isNetworkSnapshotImageUrl(snapshotPath);
     final snapshotAsync = shouldResolveSnapshot
         ? ref.watch(latestSnapshotUrlProvider(snapshotPath))
         : const AsyncValue<String>.data('');
@@ -595,7 +596,8 @@ Yêu cầu trả lời ngắn gọn theo các mục:
       final deletedIdentifiers = <String>{};
       for (final item in widget.items) {
         final docPath = item.sourceDocumentPath.trim();
-        if (docPath.isNotEmpty) {
+        // A parent plant path is shared by every capture on this device.
+        if (docPath.isNotEmpty && !isPlantDocumentPath(docPath)) {
           deletedIdentifiers.add(docPath);
           final docId = docPath.split('/').last.trim();
           if (docId.isNotEmpty) {
@@ -619,6 +621,9 @@ Yêu cầu trả lời ngắn gọn theo các mục:
       }
 
       for (final path in documentPaths) {
+        if (isPlantDocumentPath(path)) {
+          continue;
+        }
         final docId = path.split('/').last.trim();
         if (docId.isNotEmpty) {
           deletedIdentifiers.add(docId);
@@ -632,7 +637,7 @@ Yêu cầu trả lời ngắn gọn theo các mục:
         });
 
         for (final identifier in deletedIdentifiers) {
-          final safeKey = identifier.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+          final safeKey = deletedCaptureDatabaseKey(identifier);
           if (safeKey.isNotEmpty) {
             try {
               await rtdb.setData('plants/$plantId/deleted_captures/$safeKey', true);
@@ -643,6 +648,11 @@ Yêu cầu trả lời ngắn gọn theo các mục:
       }
 
       for (final path in documentPaths) {
+        // A parent plant document is not a capture. Deleting it from RTDB
+        // would also remove the device commands and sensor data.
+        if (isPlantDocumentPath(path)) {
+          continue;
+        }
         try {
           await rtdb.deleteData(path);
         } catch (_) {}

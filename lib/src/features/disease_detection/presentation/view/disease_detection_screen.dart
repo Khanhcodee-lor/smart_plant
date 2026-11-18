@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_iot/src/core/constants/app_build_text.dart';
 import 'package:app_iot/src/core/constants/app_colors.dart';
 import 'package:app_iot/src/core/views/base_view.dart';
@@ -125,8 +127,9 @@ class DiseaseDetectionScreen extends BaseView {
                       detectionsAsyncValue.asData?.value;
                   final hasFirestoreDetections =
                       firestoreDetections?.hasAnyData ?? false;
-                  final deletedKeys =
-                      ref.watch(deletedCapturesProvider(plantId));
+                  final deletedKeys = ref.watch(
+                    deletedCapturesProvider(plantId),
+                  );
 
                   var latestDetection = hasFirestoreDetections
                       ? firestoreDetections!.latestDetection
@@ -141,8 +144,9 @@ class DiseaseDetectionScreen extends BaseView {
                         .toList();
                     if (latestDetection != null &&
                         isDetectionDeleted(latestDetection, deletedKeys)) {
-                      latestDetection =
-                          history.isNotEmpty ? history.first : null;
+                      latestDetection = history.isNotEmpty
+                          ? history.first
+                          : null;
                     }
                   }
 
@@ -335,7 +339,7 @@ class DiseaseDetectionScreen extends BaseView {
                             ),
                             if (history.isNotEmpty || hasFirestoreDetections)
                               TextButton.icon(
-                                onPressed: isDeletingHistory
+                                onPressed: isDeletingHistory || isSendingCapture
                                     ? null
                                     : () => _handleDeleteAllCaptureHistory(
                                         context,
@@ -403,9 +407,13 @@ class DiseaseDetectionScreen extends BaseView {
               showOverlay: true,
             ),
           if (isSendingCapture)
-            const AppLoadingWidget(
-              text: 'Đang chờ Pi chụp và phân tích...',
-              showOverlay: true,
+            const Positioned.fill(
+              child: IgnorePointer(
+                child: AppLoadingWidget(
+                  text: 'Đang chờ Pi chụp và phân tích...',
+                  showOverlay: true,
+                ),
+              ),
             ),
         ],
       ),
@@ -592,14 +600,15 @@ class DiseaseDetectionScreen extends BaseView {
           null;
       final requestId = await ref
           .read(plantCaptureCommandServiceProvider)
-          .requestCapture(plantId);
+          .requestCapture(plantId)
+          .timeout(_piCaptureCommandAckTimeout);
       if (!context.mounted) {
         return;
       }
 
       showDiseaseFeedbackSnackBar(
         context,
-        'Đã gửi lệnh chụp tới Pi, đang chờ ảnh...',
+        'Đã gửi lệnh chụp, đang chờ Pi trả ảnh...',
       );
       ref.read(plantCaptureSnapshotRefreshKeyProvider(plantId).notifier).state =
           requestId;
@@ -627,7 +636,7 @@ class DiseaseDetectionScreen extends BaseView {
 
       showDiseaseFeedbackSnackBar(
         context,
-        'Pi xử lý lâu hơn dự kiến, app đã mở lại nút chụp.',
+        'Chưa nhận ảnh từ Pi sau 45 giây, app đã mở lại nút chụp.',
         isError: true,
       );
     } catch (error) {
@@ -637,7 +646,9 @@ class DiseaseDetectionScreen extends BaseView {
 
       showDiseaseFeedbackSnackBar(
         context,
-        'Gửi lệnh chụp thất bại: $error',
+        error is TimeoutException
+            ? 'Chưa xác nhận được lệnh chụp. Pi có thể vẫn xử lý; hãy kiểm tra trước khi gửi lại.'
+            : 'Gửi lệnh chụp thất bại: $error',
         isError: true,
       );
     } finally {
@@ -697,9 +708,7 @@ class DiseaseDetectionScreen extends BaseView {
 
       ref.read(diseaseImageUploadLatestResultProvider(plantId).notifier).state =
           null;
-      ref
-          .read(deletedCapturesProvider(plantId).notifier)
-          .state = <String>{};
+      ref.read(deletedCapturesProvider(plantId).notifier).state = <String>{};
       ref.invalidate(plantDetectionsProvider(plantId));
       ref.invalidate(plantControllerProvider);
 
@@ -730,6 +739,7 @@ class DiseaseDetectionScreen extends BaseView {
   }
 }
 
+const _piCaptureCommandAckTimeout = Duration(seconds: 15);
 const _piCaptureResultWaitTimeout = Duration(seconds: 45);
 const _piCaptureResultPollInterval = Duration(milliseconds: 900);
 const _piCaptureSnapshotRefreshPolls = 4;
@@ -1050,7 +1060,7 @@ class _BottomActionButtons extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(30.r),
                 ),
                 elevation: 4,
-                onPressed: isSendingCapture ? null : onAiPressed,
+                onPressed: onAiPressed,
                 child: Icon(
                   Icons.auto_awesome,
                   color: Colors.white,

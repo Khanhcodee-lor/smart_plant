@@ -5,7 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'firebase_storage_service.g.dart';
 
 class FirebaseStorageService {
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  FirebaseStorage get _storage => FirebaseStorage.instance;
 
   Future<String> uploadFile(String path, File file) async {
     try {
@@ -37,11 +37,8 @@ class FirebaseStorageService {
 
     final uri = Uri.tryParse(normalized);
     if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-      final storagePath = _storagePathFromGoogleStorageUrl(uri);
-      if (storagePath != null) {
-        return await _storage.ref().child(storagePath).getDownloadURL();
-      }
-
+      // Pi may already provide a public or signed URL. Resolving it again
+      // through Firebase Storage can block loading and invalidates signatures.
       return normalized;
     }
 
@@ -50,24 +47,6 @@ class FirebaseStorageService {
     }
 
     return await _storage.ref().child(normalized).getDownloadURL();
-  }
-
-  String? _storagePathFromGoogleStorageUrl(Uri uri) {
-    if (uri.host != 'storage.googleapis.com') {
-      return null;
-    }
-
-    final segments = uri.pathSegments;
-    if (segments.length < 2) {
-      return null;
-    }
-
-    final bucket = segments.first;
-    if (bucket != _storage.bucket) {
-      return null;
-    }
-
-    return segments.skip(1).join('/');
   }
 }
 

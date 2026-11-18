@@ -86,6 +86,16 @@ String _networkUrlWithCacheBust(String imageUrl, String cacheBustKey) {
     return imageUrl;
   }
 
+  final isSignedUrl = uri.queryParameters.keys.any((key) {
+    final normalized = key.toLowerCase();
+    return normalized == 'x-goog-signature' ||
+        normalized == 'x-amz-signature' ||
+        normalized == 'signature';
+  });
+  if (isSignedUrl) {
+    return imageUrl;
+  }
+
   return uri
       .replace(
         queryParameters: {
@@ -118,6 +128,11 @@ bool isLocalSnapshotImagePath(String imageUrl) {
 
 bool isInlineSnapshotImageData(String imageUrl) {
   return imageUrl.trim().startsWith('data:image/');
+}
+
+bool isNetworkSnapshotImageUrl(String imageUrl) {
+  final uri = Uri.tryParse(imageUrl.trim());
+  return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
 }
 
 File _localFileFromPath(String imageUrl) {

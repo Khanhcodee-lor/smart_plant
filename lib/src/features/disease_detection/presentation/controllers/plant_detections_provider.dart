@@ -73,9 +73,7 @@ final plantDetectionsProvider = StreamProvider.autoDispose
           final localDeleted = ref.read(deletedCapturesProvider(plantId));
           final allDeleted = <String>{...rtdbDeletedCaptures, ...localDeleted};
 
-          controller.add(
-            filterOutDeletedCaptures(rawMerged, allDeleted),
-          );
+          controller.add(filterOutDeletedCaptures(rawMerged, allDeleted));
         }
 
         ref.listen<Set<String>>(deletedCapturesProvider(plantId), (_, next) {
@@ -84,8 +82,10 @@ final plantDetectionsProvider = StreamProvider.autoDispose
 
         Future<void> fetchInitialDeleted() async {
           try {
-            final initialDeleted =
-                await _readRealtimeDeletedCaptures(database, plantId);
+            final initialDeleted = await _readRealtimeDeletedCaptures(
+              database,
+              plantId,
+            );
             if (!cancelled && initialDeleted.isNotEmpty) {
               rtdbDeletedCaptures.addAll(initialDeleted);
               emitMerged();
@@ -155,8 +155,10 @@ final plantDetectionsProvider = StreamProvider.autoDispose
         Future<void> poll() async {
           while (!cancelled) {
             try {
-              final deletedFromRtdb =
-                  await _readRealtimeDeletedCaptures(database, plantId);
+              final deletedFromRtdb = await _readRealtimeDeletedCaptures(
+                database,
+                plantId,
+              );
               if (deletedFromRtdb.isNotEmpty) {
                 rtdbDeletedCaptures.addAll(deletedFromRtdb);
               }
@@ -257,52 +259,57 @@ Future<Set<String>> _readRealtimeDeletedCaptures(
   return deletedKeys;
 }
 
+bool isPlantDocumentPath(String path) {
+  // The plant ID identifies the device, not any individual capture.
+  final parts = path
+      .trim()
+      .split('/')
+      .where((part) => part.isNotEmpty)
+      .toList();
+  return parts.length == 2 &&
+      (parts.first == 'plant' || parts.first == 'plants');
+}
+
+String deletedCaptureDatabaseKey(String identifier) =>
+    identifier.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+
+bool _hasDeletedIdentifier(String value, Set<String> deletedKeys) {
+  final identifier = value.trim();
+  return identifier.isNotEmpty &&
+      (deletedKeys.contains(identifier) ||
+          deletedKeys.contains(deletedCaptureDatabaseKey(identifier)));
+}
+
+bool _isDeletedSnapshot(String snapshot, Set<String> deletedKeys) {
+  if (_hasDeletedIdentifier(snapshot, deletedKeys)) {
+    return true;
+  }
+
+  // Older records can lack a document path, but contain the capture ID in
+  // the image name. Match only complete capture IDs, never arbitrary substrings
+  // such as the plant ID shared by every image.
+  final captureIds = RegExp(
+    r'(?:mobile_upload|manual|mobile)_[0-9]+_[a-zA-Z0-9]+|'
+    r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+  ).allMatches(snapshot);
+  return captureIds.any((match) => deletedKeys.contains(match.group(0)));
+}
+
 bool isDetectionDeleted(DetectionItem item, Set<String> deletedKeys) {
   if (deletedKeys.isEmpty) {
     return false;
   }
 
   final sourceDoc = item.sourceDocumentPath.trim();
-  final snapshot = item.snapshotUrl.trim();
-  final time = item.time.trim();
-
-  if (sourceDoc.isNotEmpty && deletedKeys.contains(sourceDoc)) {
-    return true;
-  }
-  if (snapshot.isNotEmpty && deletedKeys.contains(snapshot)) {
-    return true;
-  }
-  if (time.isNotEmpty && deletedKeys.contains(time)) {
-    return true;
-  }
-
-  if (sourceDoc.isNotEmpty) {
-    final docId = sourceDoc.split('/').last.trim();
-    if (docId.isNotEmpty && deletedKeys.contains(docId)) {
+  if (sourceDoc.isNotEmpty && !isPlantDocumentPath(sourceDoc)) {
+    if (_hasDeletedIdentifier(sourceDoc, deletedKeys) ||
+        _hasDeletedIdentifier(sourceDoc.split('/').last, deletedKeys)) {
       return true;
     }
   }
 
-  final idMatch = RegExp(
-    r'(mobile_upload_[0-9]+_[a-f0-9]+|manual_[0-9]+_[a-zA-Z0-9_]+)',
-  ).firstMatch('$sourceDoc $snapshot');
-  if (idMatch != null) {
-    final extractedId = idMatch.group(1)!;
-    if (deletedKeys.contains(extractedId)) {
-      return true;
-    }
-  }
-
-  for (final key in deletedKeys) {
-    if (key.length >= 6) {
-      if ((sourceDoc.isNotEmpty && sourceDoc.contains(key)) ||
-          (snapshot.isNotEmpty && snapshot.contains(key))) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return _isDeletedSnapshot(item.snapshotUrl.trim(), deletedKeys) ||
+      _hasDeletedIdentifier(item.time, deletedKeys);
 }
 
 PlantDetectionsData filterOutDeletedCaptures(
@@ -322,8 +329,10 @@ PlantDetectionsData filterOutDeletedCaptures(
       .toList();
 
   var effectiveLatest = data.latestDetection;
-  if (effectiveLatest != null &&
-      isDetectionDeleted(effectiveLatest, deletedKeys)) {
+  final latestWasDeleted =
+      effectiveLatest != null &&
+      isDetectionDeleted(effectiveLatest, deletedKeys);
+  if (latestWasDeleted) {
     effectiveLatest = null;
   }
 
@@ -341,11 +350,9 @@ PlantDetectionsData filterOutDeletedCaptures(
   var effectiveSnapshot = data.latestSnapshotUrl.trim();
   var effectiveCapturedAt = data.latestCapturedAt.trim();
 
-  final snapshotDeleted = deletedKeys.any((k) {
-    if (k.length < 6) return false;
-    return (effectiveSnapshot.isNotEmpty && effectiveSnapshot.contains(k)) ||
-        (effectiveCapturedAt.isNotEmpty && effectiveCapturedAt.contains(k));
-  });
+  final snapshotDeleted =
+      _isDeletedSnapshot(effectiveSnapshot, deletedKeys) ||
+      _hasDeletedIdentifier(effectiveCapturedAt, deletedKeys);
 
   if (effectiveLatest != null) {
     effectiveSnapshot = effectiveLatest.snapshotUrl.trim().isNotEmpty
@@ -354,7 +361,11 @@ PlantDetectionsData filterOutDeletedCaptures(
     effectiveCapturedAt = effectiveLatest.time.trim().isNotEmpty
         ? effectiveLatest.time.trim()
         : (snapshotDeleted ? '' : effectiveCapturedAt);
-  } else if (snapshotDeleted || filteredHistory.isEmpty) {
+  } else if (snapshotDeleted ||
+      latestWasDeleted ||
+      (data.latestDetections.isNotEmpty &&
+          filteredLatestDetections.isEmpty &&
+          filteredHistory.isEmpty)) {
     effectiveSnapshot = '';
     effectiveCapturedAt = '';
   }

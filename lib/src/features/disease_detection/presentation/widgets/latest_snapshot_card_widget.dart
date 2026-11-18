@@ -31,7 +31,8 @@ class LatestSnapshotCardWidget extends ConsumerWidget {
     final shouldResolveSnapshot =
         normalizedPath.isNotEmpty &&
         !isLocalSnapshotImagePath(normalizedPath) &&
-        !isInlineSnapshotImageData(normalizedPath);
+        !isInlineSnapshotImageData(normalizedPath) &&
+        !isNetworkSnapshotImageUrl(normalizedPath);
     final snapshotAsync = shouldResolveSnapshot
         ? ref.watch(latestSnapshotUrlProvider(normalizedPath))
         : const AsyncValue<String>.data('');

@@ -671,5 +671,128 @@ void main() {
     expect(filtered.latestSnapshotUrl, isEmpty);
     expect(filtered.latestCapturedAt, isEmpty);
   });
-}
 
+  test('plant-level deletion markers do not hide newer camera captures', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'manual_1794927315038_97d1',
+        path: 'plants/tomato_001/plant_captures/manual_1794927315038_97d1',
+        data: {
+          'status': 'no_detection',
+          'diseaseClass': 'Không phát hiện bệnh',
+          'captured_at': '2026-11-17T14:55:15.462Z',
+          'snapshot_url':
+              'detections/snapshots/tomato_001_manual_1794927315038_97d1.jpg',
+        },
+      ),
+    ]);
+
+    final filtered = debugFilterOutDeletedCaptures(parsed, {
+      'tomato_001',
+      'plants_tomato_001',
+      'plant_tomato_001',
+    });
+
+    expect(filtered.history, hasLength(1));
+    expect(filtered.latestDetection, isNotNull);
+    expect(filtered.latestSnapshotUrl, contains('manual_1794927315038_97d1'));
+  });
+
+  test('a parent plant path is not a capture deletion identifier', () {
+    final parsed = debugParsePlantDetectionsDocument({
+      'diseaseClass': 'Không phát hiện bệnh',
+      'captured_at': '2026-11-17T14:55:15.462Z',
+      'snapshot_url': 'detections/snapshots/tomato_001_new.jpg',
+    }, sourceDocumentPath: 'plants/tomato_001');
+
+    final filtered = debugFilterOutDeletedCaptures(parsed, {
+      'tomato_001',
+      'plants_tomato_001',
+    });
+
+    expect(filtered.latestDetection, isNotNull);
+    expect(filtered.latestSnapshotUrl, 'detections/snapshots/tomato_001_new.jpg');
+    expect(isPlantDocumentPath('plants/tomato_001'), isTrue);
+    expect(isPlantDocumentPath('plants/tomato_001/plant_captures/new'), isFalse);
+  });
+
+  test('deleting one capture does not match a longer capture ID', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'manual_1794927315038_abc',
+        path: 'plants/tomato_001/plant_captures/manual_1794927315038_abc',
+        data: {
+          'diseaseClass': 'Không phát hiện bệnh',
+          'captured_at': '2026-11-17T14:55:15.462Z',
+          'snapshot_url': 'detections/snapshots/manual_1794927315038_abc.jpg',
+        },
+      ),
+    ]);
+
+    final filtered = debugFilterOutDeletedCaptures(parsed, {
+      'manual_1794927315038_ab',
+    });
+
+    expect(filtered.history, hasLength(1));
+    expect(filtered.latestDetection, isNotNull);
+  });
+
+  test('an old deletion does not hide unrelated snapshot-only metadata', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'new-image',
+        path: 'plants/tomato_001/plant_captures/new-image',
+        data: {
+          'snapshot_url': 'detections/snapshots/tomato_001_new.jpg',
+          'captured_at': '2026-11-17T14:55:15.462Z',
+        },
+      ),
+    ]);
+
+    final filtered = debugFilterOutDeletedCaptures(parsed, {
+      'tomato_001',
+      'manual_1794926458848_cf27b',
+    });
+
+    expect(filtered.history, isEmpty);
+    expect(
+      filtered.latestSnapshotUrl,
+      'detections/snapshots/tomato_001_new.jpg',
+    );
+    expect(filtered.latestCapturedAt, isNotEmpty);
+  });
+
+  test('sanitized capture path still hides only that deleted capture', () {
+    final parsed = debugParsePlantDetectionsCollection([
+      const FirestoreDocumentData(
+        id: 'old-capture',
+        path: 'plants/tomato_001/plant_captures/old-capture',
+        data: {
+          'diseaseClass': 'Không phát hiện bệnh',
+          'captured_at': '2026-11-17T14:40:00Z',
+          'snapshot_url': 'detections/snapshots/old.jpg',
+        },
+      ),
+      const FirestoreDocumentData(
+        id: 'new-capture',
+        path: 'plants/tomato_001/plant_captures/new-capture',
+        data: {
+          'diseaseClass': 'Không phát hiện bệnh',
+          'captured_at': '2026-11-17T14:55:00Z',
+          'snapshot_url': 'detections/snapshots/new.jpg',
+        },
+      ),
+    ]);
+
+    final filtered = debugFilterOutDeletedCaptures(parsed, {
+      'plants_tomato_001_plant_captures_old-capture',
+    });
+
+    expect(filtered.history, hasLength(1));
+    expect(
+      filtered.history.single.sourceDocumentPath,
+      endsWith('/new-capture'),
+    );
+    expect(filtered.latestSnapshotUrl, 'detections/snapshots/new.jpg');
+  });
+}
