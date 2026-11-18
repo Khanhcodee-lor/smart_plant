@@ -17,8 +17,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'router.g.dart';
 
-// Navigator key gốc
-final _rootNavigatorKey = GlobalKey<NavigatorState>();
+// Navigator key gốc, dùng để hiển thị thông báo nổi trên toàn ứng dụng.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 class _AuthStateListenable extends ChangeNotifier {
   _AuthStateListenable(Stream<User?> authStateChanges) {
@@ -43,7 +43,7 @@ GoRouter router(Ref ref) {
   ref.onDispose(authStateListenable.dispose);
 
   return GoRouter(
-    navigatorKey: _rootNavigatorKey,
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/login',
     debugLogDiagnostics: true,
     refreshListenable: authStateListenable,

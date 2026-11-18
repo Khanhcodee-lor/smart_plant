@@ -21,6 +21,8 @@ class MyApp extends ConsumerStatefulWidget {
 }
 
 class _MyAppState extends ConsumerState<MyApp> {
+  OverlayEntry? _foregroundNotificationEntry;
+
   @override
   void initState() {
     super.initState();
@@ -73,26 +75,57 @@ class _MyAppState extends ConsumerState<MyApp> {
   }
 
   void _showForegroundNotification(GoRouter router, RemoteMessage message) {
-    final title = message.notification?.title ??
+    final title =
+        message.notification?.title ??
         message.data['title']?.toString() ??
         'Thông báo cây trồng';
-    final body = message.notification?.body ??
+    final body =
+        message.notification?.body ??
         message.data['body']?.toString() ??
         message.data['message']?.toString() ??
         'Có kết quả nhận diện mới.';
 
-    rootScaffoldMessengerKey.currentState
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text('$title\n$body'),
-          duration: const Duration(seconds: 6),
-          action: SnackBarAction(
-            label: 'XEM',
-            onPressed: () => _openNotification(router, message),
-          ),
-        ),
+    final overlay = rootNavigatorKey.currentState?.overlay;
+    if (overlay == null) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text('$title\n$body')),
       );
+      return;
+    }
+
+    _removeForegroundNotification();
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _ForegroundNotificationBanner(
+        title: title,
+        body: body,
+        onTap: () => _openNotification(router, message),
+        onDismiss: () {
+          if (!identical(_foregroundNotificationEntry, entry)) return;
+          _foregroundNotificationEntry = null;
+          entry.remove();
+          entry.dispose();
+        },
+      ),
+    );
+    _foregroundNotificationEntry = entry;
+    overlay.insert(entry);
+  }
+
+  void _removeForegroundNotification() {
+    final entry = _foregroundNotificationEntry;
+    _foregroundNotificationEntry = null;
+    if (entry != null) {
+      entry.remove();
+      entry.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _removeForegroundNotification();
+    super.dispose();
   }
 
   /// ===============================
@@ -208,6 +241,223 @@ class _MyAppState extends ConsumerState<MyApp> {
             borderRadius: BorderRadius.circular(8.r),
           ),
           elevation: 2,
+        ),
+      ),
+    );
+  }
+}
+
+class _ForegroundNotificationBanner extends StatefulWidget {
+  const _ForegroundNotificationBanner({
+    required this.title,
+    required this.body,
+    required this.onTap,
+    required this.onDismiss,
+  });
+
+  final String title;
+  final String body;
+  final VoidCallback onTap;
+  final VoidCallback onDismiss;
+
+  @override
+  State<_ForegroundNotificationBanner> createState() =>
+      _ForegroundNotificationBannerState();
+}
+
+class _ForegroundNotificationBannerState
+    extends State<_ForegroundNotificationBanner> {
+  bool _visible = false;
+  Timer? _dismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _visible = true);
+      _dismissTimer = Timer(const Duration(seconds: 6), _dismiss);
+    });
+  }
+
+  void _dismiss() {
+    _dismissTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _visible = false);
+    _dismissTimer = Timer(const Duration(milliseconds: 240), () {
+      if (mounted) widget.onDismiss();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dismissTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(20.r);
+
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
+          child: AnimatedSlide(
+            offset: _visible ? Offset.zero : const Offset(0, -0.18),
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: _visible ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: Material(
+                color: Colors.white,
+                elevation: 12,
+                shadowColor: AppColors.primary.withOpacity(0.2),
+                borderRadius: borderRadius,
+                child: InkWell(
+                  onTap: () {
+                    widget.onTap();
+                    _dismiss();
+                  },
+                  borderRadius: borderRadius,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: borderRadius,
+                      border: Border.all(
+                        color: AppColors.primary.withOpacity(0.14),
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: borderRadius,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            height: 3.h,
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primary,
+                                  AppColors.accentSecond,
+                                ],
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(14.w, 12.h, 8.w, 13.h),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 42.w,
+                                  height: 42.w,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(14.r),
+                                  ),
+                                  child: Icon(
+                                    Icons.notifications_active_rounded,
+                                    color: AppColors.primary,
+                                    size: 23.sp,
+                                  ),
+                                ),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              'THÔNG BÁO MỚI',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: AppColors.primary,
+                                                fontSize: 10.sp,
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.7,
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(
+                                            width: 28.w,
+                                            height: 28.w,
+                                            child: IconButton(
+                                              onPressed: _dismiss,
+                                              padding: EdgeInsets.zero,
+                                              tooltip: 'Đóng thông báo',
+                                              icon: Icon(
+                                                Icons.close_rounded,
+                                                color: AppColors.disabledText,
+                                                size: 18.sp,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      Text(
+                                        widget.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: AppColors.textMain,
+                                          fontSize: 14.sp,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      SizedBox(height: 3.h),
+                                      Text(
+                                        widget.body,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 12.sp,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                      SizedBox(height: 8.h),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Xem chi tiết',
+                                            style: TextStyle(
+                                              color: AppColors.primary,
+                                              fontSize: 12.sp,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          SizedBox(width: 3.w),
+                                          Icon(
+                                            Icons.arrow_forward_rounded,
+                                            color: AppColors.primary,
+                                            size: 15.sp,
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
